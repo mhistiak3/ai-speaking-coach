@@ -152,7 +152,7 @@ class WebSpeechTurn implements SpeechTurn {
 
   private armSilenceTimer(): void {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    const ms = this.options.silenceStopMs ?? 800;
+    const ms = this.options.silenceStopMs ?? 2200;
     this.silenceTimer = setTimeout(() => {
       if (Date.now() - this.lastHeardAt >= ms * 0.9) this.stop();
     }, ms);

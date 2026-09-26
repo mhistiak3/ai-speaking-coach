@@ -189,6 +189,8 @@ export interface UserSettings {
   muted: boolean;
   /** Bias for the auto-picked browser voice when no specific voice is chosen. */
   voiceGender: "any" | "male" | "female";
+  /** Open the mic automatically when the AI finishes speaking. */
+  handsFree: boolean;
   correctionFrequency: CorrectionFrequency;
   pronunciationFeedback: boolean;
   theme: "dark" | "light";
@@ -203,6 +205,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoPlayVoice: true,
   muted: false,
   voiceGender: "male",
+  handsFree: true,
   correctionFrequency: "balanced",
   pronunciationFeedback: true,
   theme: "dark",

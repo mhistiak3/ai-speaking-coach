@@ -86,7 +86,8 @@ scripts/                      icon-source.svg + generate-icons.mjs (node scripts
 - **Honest scoring types.** `ScoredMetric { value: number | null; estimated: boolean }` — null means "no basis", never 0.
 - **Hydration.** Persisted stores differ between server and first client render. Gate localStorage-derived UI with `useHydrated()`.
 - **Client/server boundaries.** `'use client'` only at leaves that need it. `lib/env.ts` is server-only — never import from browser code.
-- **Speech timing.** STT turn: continuous=true with a 0.8s silence watchdog after interim results and an 8s no-speech timeout. Final transcript fires once, on recognizer end.
+- **Speech timing.** STT turn: continuous=true with a 2.2s silence watchdog after the last spoken word (so thinking pauses mid-sentence never cut the turn) and a no-speech watchdog — 8s manual / 5s hands-free. Final transcript fires once, on recognizer end.
+- **Hands-free loop.** When `settings.handsFree` is on, `speakReply` bumps `autoListenTick`; an effect reopens the mic ~450ms after the AI's voice ends (or immediately when muted/autoplay-off). If the learner says nothing for 5s, the turn closes quietly (no error card) and waits for a manual tap. One-shot per reply — never an endless loop.
 - **Turn-taking.** The mic stays disabled until AI speech ends (`await speakReply(...)` in the orchestrator). `deliverGreeting()` must be triggered by a user gesture (iOS TTS policy).
 
 ## Data & privacy

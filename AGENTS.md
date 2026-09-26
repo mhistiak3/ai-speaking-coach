@@ -17,7 +17,7 @@ Non-negotiables (summary):
 1. Never fake measurements — pronunciation/grammar scores are AI estimates and must render the `AI estimate` badge (`estimated: true`) unless a phoneme provider supplies real scores.
 2. API keys are server-only. All LLM traffic goes through `app/api/*`; `lib/env.ts` is the only reader of env vars.
 3. Mic audio is transient: never stored, never uploaded except to the configured speech engine.
-4. Flow: `idle → listening → processing → thinking → speaking → idle`. Analysis runs in parallel and must never block reply or voice.
+4. Flow: `idle → listening → processing → thinking → speaking → idle`. Analysis runs in parallel and must never block reply or voice. With `handsFree` on (Settings → AI voice, default on), the mic reopens automatically when the AI stops speaking and closes itself after 5s of silence.
 5. Tailwind v4 CSS-first (`app/globals.css` `@theme`). No `tailwind.config.js`.
 6. Strict TypeScript; zod for all API + LLM structured-output validation; providers behind interfaces in `lib/ai/` and `lib/speech/`.
 7. Dev gotcha: OpenCode Go requires the `x-opencode-session` header on every request; the configured model is a reasoning model, so give `max_tokens` generous budgets (≥1500).

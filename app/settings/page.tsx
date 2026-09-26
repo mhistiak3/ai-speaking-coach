@@ -244,6 +244,12 @@ export function SettingsForm() {
             description="The partner speaks every reply out loud."
           />
           <Switch
+            checked={settings.handsFree}
+            onChange={(handsFree) => update({ handsFree })}
+            label="Hands-free mode"
+            description="After the AI finishes speaking, the mic opens automatically. If you say nothing for 5s, it closes and waits for your tap."
+          />
+          <Switch
             checked={!settings.muted}
             onChange={(soundOn) => update({ muted: !soundOn })}
             label="Sound on"

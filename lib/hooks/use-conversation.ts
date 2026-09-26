@@ -81,6 +81,8 @@ export function useConversation(sessionId: string) {
   const turnRef = useRef<SpeechTurn | null>(null);
   const speakHandleRef = useRef<{ cancel: () => void } | null>(null);
   const phaseRef = useRef<ConversationPhase>("idle");
+  const autoTurnRef = useRef(false);
+  const [autoListenTick, setAutoListenTick] = useState(0);
   const lastUserTextRef = useRef<string>("");
   const lastAssistantRef = useRef<string>("");
   const turnStartedAtRef = useRef<number>(0);
@@ -151,8 +153,10 @@ export function useConversation(sessionId: string) {
   const speakReply = useCallback(
     (text: string) =>
       new Promise<void>((resolve) => {
+        const handsFreeSignal = () => setAutoListenTick((t) => t + 1);
         if (settings.muted || !settings.autoPlayVoice || !browserTts.isAvailable()) {
           setPhase("idle");
+          handsFreeSignal();
           resolve();
           return;
         }
@@ -170,11 +174,13 @@ export function useConversation(sessionId: string) {
             onEnd: () => {
               speakHandleRef.current = null;
               setPhase("idle");
+              handsFreeSignal();
               resolve();
             },
             onError: () => {
               speakHandleRef.current = null;
               setPhase("idle");
+              handsFreeSignal();
               resolve();
             },
           },
@@ -300,6 +306,7 @@ export function useConversation(sessionId: string) {
 
   const handleFinalTranscript = useCallback(
     (transcript: FinalTranscript) => {
+      autoTurnRef.current = false;
       const text = transcript.text.trim();
       if (!text) {
         setError({ message: "No speech detected. Tap the mic and try again.", retryable: true });
@@ -317,11 +324,12 @@ export function useConversation(sessionId: string) {
     [addMessage, consumeAnalysis, requestReply, sessionId],
   );
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback((opts?: { auto?: boolean }) => {
     if (turnRef.current?.active) return;
     if (phaseRef.current === "speaking") stopSpeaking();
     setError(null);
     setInterim("");
+    autoTurnRef.current = opts?.auto === true;
     if (!webSpeechStt.isAvailable()) {
       setError({
         message: "This browser can't do speech recognition. Try Chrome, Edge, or Safari.",
@@ -333,12 +341,23 @@ export function useConversation(sessionId: string) {
     setPhase("listening");
     turnStartedAtRef.current = Date.now();
     turnRef.current = webSpeechStt.createTurn(
-      { lang: target.speechTag },
+      {
+        lang: target.speechTag,
+        // Hands-free auto-opened mic: if nothing is said for 5s, close it.
+        noSpeechTimeoutMs: opts?.auto ? 5000 : 8000,
+      },
       {
         onInterim: (text) => setInterim(text),
         onFinal: handleFinalTranscript,
         onError: (err: SpeechError) => {
           setInterim("");
+          // A hands-free window that caught no speech just quietly closes
+          // the mic — no scary error, the orb is ready for the next tap.
+          if (autoTurnRef.current && err.code === "empty-speech") {
+            autoTurnRef.current = false;
+            setPhase((p) => (p === "listening" ? "idle" : p));
+            return;
+          }
           const friendly: Record<string, string> = {
             "mic-permission": "Microphone access was blocked. Allow it in your browser settings and try again.",
             "no-microphone": "No microphone found. Plug one in or check your device settings.",
@@ -364,9 +383,24 @@ export function useConversation(sessionId: string) {
   const cancelListening = useCallback(() => {
     turnRef.current?.cancel();
     turnRef.current = null;
+    autoTurnRef.current = false;
     setInterim("");
     setPhase("idle");
   }, []);
+
+  // ── Hands-free: open the mic automatically once the AI has finished speaking.
+  // If the learner says nothing for 5s, the recognizer's no-speech watchdog
+  // quietly closes the mic again (see startListening).
+  useEffect(() => {
+    if (autoListenTick === 0) return;
+    if (!useSettingsStore.getState().handsFree) return;
+    const t = setTimeout(() => {
+      const s = useSessionsStore.getState().sessions.find((x) => x.id === sessionId);
+      if (s?.endedAt) return;
+      if (phaseRef.current === "idle") startListening({ auto: true });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [autoListenTick, sessionId, startListening]);
 
   /** Keyboard fallback: submit typed text as a spoken turn. */
   const sendTyped = useCallback(

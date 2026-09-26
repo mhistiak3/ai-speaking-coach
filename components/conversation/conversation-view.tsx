@@ -55,6 +55,7 @@ export function ConversationView({ session }: ConversationViewProps) {
 
   const muted = useSettingsStore((s) => s.muted);
   const playbackRate = useSettingsStore((s) => s.playbackRate);
+  const handsFree = useSettingsStore((s) => s.handsFree);
   const updateSettings = useSettingsStore((s) => s.update);
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -131,7 +132,9 @@ export function ConversationView({ session }: ConversationViewProps) {
               ? "Try again"
               : messages.length === 0
                 ? "Ready when you are"
-                : "Tap the mic and speak";
+                : handsFree
+                  ? "Speak now — or tap the mic any time"
+                  : "Tap the mic and speak";
 
   const hasUnseenFeedback = analyses.length > 0 && !feedbackSeen;
 
@@ -347,7 +350,7 @@ export function ConversationView({ session }: ConversationViewProps) {
               phase={phase}
               level={level}
               disabled={ended}
-              onIdleTap={convo.startListening}
+              onIdleTap={() => convo.startListening()}
               onListeningTap={convo.stopListening}
             />
           )}

@@ -20,7 +20,8 @@ layered underneath.
   activity, session summaries with the corrections that matter — all stored
   on-device (no database).
 - 🎙️ **Your AI voice** — pick a specific browser voice or let Auto prefer a
-  male / female / any voice, at 0.75× or 1× speed.
+  male / female / any voice, at 0.75× or 1× speed. Enable **Hands-free** and
+  the mic opens itself when the AI stops talking — just answer.
 - 🔒 **Honest by design** — the browser speech engine can't measure phonemes,
   so every pronunciation number is clearly labelled **AI estimate**. Real
   phoneme scoring can be plugged in later without UI changes.
