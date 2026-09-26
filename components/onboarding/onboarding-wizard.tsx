@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 
-import { AppHeader, MobileNav } from "@/components/layout/header";
+import { AppHeader } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/lib/store/settings-store";
@@ -61,10 +61,11 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col pb-24 sm:pb-8">
+    <div className="flex h-dvh flex-col">
       <AppHeader />
 
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 sm:px-6">
+      <main className="flex-1 overflow-y-auto px-4 pt-6 sm:px-6">
+        <div className="mx-auto flex w-full max-w-2xl flex-col">
         {/* progress */}
         <div className="mb-8 flex items-center gap-2">
           {steps.map((label, i) => (
@@ -190,8 +191,11 @@ export function OnboardingWizard() {
           </StepShell>
         )}
 
-        {/* nav */}
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-edge bg-[var(--surface)] p-4 pb-[calc(env(safe-area-inset-bottom)+12px)] backdrop-blur-xl sm:static sm:mt-8 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+        </div>
+      </main>
+
+      {/* nav footer — in-flow (never hidden by browser UI or other fixed bars) */}
+      <footer className="border-t border-edge bg-[var(--surface)] p-4 pb-[calc(env(safe-area-inset-bottom)+12px)] backdrop-blur-xl">
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
             <Button
               variant="ghost"
@@ -221,10 +225,7 @@ export function OnboardingWizard() {
               )}
             </Button>
           </div>
-        </div>
-      </main>
-
-      <MobileNav />
+      </footer>
     </div>
   );
 }

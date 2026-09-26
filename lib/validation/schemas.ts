@@ -89,33 +89,3 @@ export const WordProfileSchema = z.object({
   example: z.string().max(500),
   meaningNative: z.string().max(500).nullable().default(null),
 });
-
-export const SessionStatsSchema = z.object({
-  turns: z.number().int().min(0),
-  wordsSpoken: z.number().int().min(0),
-  speakingMs: z.number().int().min(0),
-  durationMs: z.number().int().min(0),
-  fillers: z.number().int().min(0),
-  avgResponseMs: z.number().nullable(),
-  pronunciationAvg: z.number().nullable(),
-  grammarAvg: z.number().nullable(),
-  vocabularyAvg: z.number().nullable(),
-});
-
-export const SessionSyncSchema = z.object({
-  session: z.object({
-    id: z.string().min(1).max(64),
-    createdAt: z.number().int(),
-    endedAt: z.number().int().nullable(),
-    scenarioId: z.string().max(64),
-    customTopic: z.string().max(200).nullable(),
-    nativeLanguage: LanguageCodeSchema,
-    targetLanguage: LanguageCodeSchema,
-    level: LevelSchema,
-    stats: SessionStatsSchema,
-    messages: z.array(z.unknown()),
-    analyses: z.array(
-      z.object({ words: z.array(z.object({ word: z.string().max(50) })).max(10).optional() }),
-    ),
-  }),
-});

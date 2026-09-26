@@ -17,7 +17,10 @@ layered underneath.
 - 📖 **Word practice** — IPA, syllable breakdown, stress highlighting, meaning,
   examples, slow/normal audio, record-yourself attempts with match estimates.
 - 📊 **Progress** — streaks, minutes spoken, difficult-word library, 14-day
-  activity, session summaries with the corrections that matter.
+  activity, session summaries with the corrections that matter — all stored
+  on-device (no database).
+- 🎙️ **Your AI voice** — pick a specific browser voice or let Auto prefer a
+  male / female / any voice, at 0.75× or 1× speed.
 - 🔒 **Honest by design** — the browser speech engine can't measure phonemes,
   so every pronunciation number is clearly labelled **AI estimate**. Real
   phoneme scoring can be plugged in later without UI changes.
@@ -28,7 +31,7 @@ layered underneath.
 
 ```bash
 npm install
-cp .env.example .env.local   # add your OpenCode Go key (+ optional Postgres URL)
+cp .env.example .env.local   # add your OpenCode Go key
 npm run dev                  # http://localhost:3000
 ```
 
@@ -36,8 +39,7 @@ npm run dev                  # http://localhost:3000
 | --- | --- |
 | `OPENCODE_API_KEY` | [OpenCode Go](https://opencode.ai/go) subscription key (server-only) |
 | `OPENCODE_BASE_URL` | default `https://opencode.ai/zen/go` |
-| `OPENCODE_MODEL` | default `glm-5.3-flash` (chat-completions models only) |
-| `DATABASE_URL` | optional Postgres mirror; empty = everything stays on-device |
+| `OPENCODE_MODEL` | default `space-bunny-free` — fastest; chat-completions models only |
 
 The app runs end-to-end with **zero** third-party speech costs: browser Web
 Speech handles both recognition and voices.
@@ -48,8 +50,8 @@ Speech handles both recognition and voices.
   to disk by this app.
 - Browser speech may route audio through the browser vendor's service (e.g.
   Chrome → Google); a dedicated provider can replace it.
-- Transcripts and history live in `localStorage` until you opt into the
-  Postgres mirror. API keys never reach the browser.
+- Transcripts and history live only in `localStorage` — this app has no database.
+  API keys never reach the browser.
 
 ## Architecture
 
@@ -60,7 +62,6 @@ model, phase plan, non-negotiables). Key layers:
 lib/ai/          LLM provider abstraction (OpenCode Go today, swappable)
 lib/speech/      STT/TTS provider interfaces + browser implementations
 lib/store/       Zustand + localStorage (sessions, settings, word practice)
-lib/data/        Optional Postgres mirror (schema auto-applied)
 app/api/         Server routes — conversation, analyze, explain, word-profile, progress
 ```
 

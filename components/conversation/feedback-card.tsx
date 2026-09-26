@@ -73,7 +73,7 @@ export function FeedbackCard({ analysis, userText, compact }: FeedbackCardProps)
   }
 
   function listenWord(word: string) {
-    browserTts.speak(word, { lang: target.speechTag, rate: 0.8, voiceId: settings.voiceId });
+    browserTts.speak(word, { lang: target.speechTag, rate: 0.8, voiceId: settings.voiceId, gender: settings.voiceGender });
   }
 
   return (

@@ -175,8 +175,6 @@ export interface ConversationSession {
   messages: ChatMessage[];
   analyses: TurnAnalysis[];
   stats: SessionStats;
-  /** True when the session was synced to Postgres (if configured). */
-  synced: boolean;
 }
 
 export interface UserSettings {
@@ -189,6 +187,8 @@ export interface UserSettings {
   playbackRate: number;
   autoPlayVoice: boolean;
   muted: boolean;
+  /** Bias for the auto-picked browser voice when no specific voice is chosen. */
+  voiceGender: "any" | "male" | "female";
   correctionFrequency: CorrectionFrequency;
   pronunciationFeedback: boolean;
   theme: "dark" | "light";
@@ -202,6 +202,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   playbackRate: 1,
   autoPlayVoice: true,
   muted: false,
+  voiceGender: "male",
   correctionFrequency: "balanced",
   pronunciationFeedback: true,
   theme: "dark",

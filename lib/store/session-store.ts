@@ -65,14 +65,12 @@ interface SessionsState {
   addMessage: (sessionId: string, message: ChatMessage) => void;
   addAnalysis: (sessionId: string, analysis: TurnAnalysis) => void;
   markEnded: (sessionId: string) => void;
-  markSynced: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
 }
 
 /**
- * Session persistence. localStorage is the source of truth for MVP; the
- * same shape is mirrored to Postgres on session end when DATABASE_URL is
- * configured (see lib/data/server-repo.ts).
+ * Session persistence. localStorage is the single source of truth —
+ * conversations, analyses, and progress never leave the device.
  */
 export const useSessionsStore = create<SessionsState>()(
   persist(
@@ -94,7 +92,6 @@ export const useSessionsStore = create<SessionsState>()(
           messages: [],
           analyses: [],
           stats: EMPTY_STATS,
-          synced: false,
         };
         set((state) => ({ sessions: [session, ...state.sessions].slice(0, 100) }));
         return session;
@@ -129,11 +126,6 @@ export const useSessionsStore = create<SessionsState>()(
           }),
         })),
 
-      markSynced: (sessionId) =>
-        set((state) => ({
-          sessions: state.sessions.map((s) => (s.id === sessionId ? { ...s, synced: true } : s)),
-        })),
-
       deleteSession: (sessionId) =>
         set((state) => ({ sessions: state.sessions.filter((s) => s.id !== sessionId) })),
     }),
@@ -144,18 +136,3 @@ export const useSessionsStore = create<SessionsState>()(
   ),
 );
 
-/** Sync a finished session to Postgres (fire-and-forget when DB not configured). */
-export async function syncSessionToServer(session: ConversationSession): Promise<boolean> {
-  try {
-    const res = await fetch("/api/progress", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session }),
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { stored?: string };
-    return data.stored === "postgres";
-  } catch {
-    return false;
-  }
-}

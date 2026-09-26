@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { AppHeader, MobileNav } from "@/components/layout/header";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/card";
 import { useSessionsStore } from "@/lib/store/session-store";
@@ -227,9 +226,6 @@ export function PracticeHub() {
                           ` · pron ${Math.round(s.stats.pronunciationAvg)} (est.)`}
                       </span>
                     </button>
-                    <Badge tone={s.synced ? "good" : "neutral"} className="hidden sm:inline-flex">
-                      {s.synced ? "synced" : "local"}
-                    </Badge>
                     <button
                       onClick={() => deleteSession(s.id)}
                       aria-label={`Delete session ${s.id}`}

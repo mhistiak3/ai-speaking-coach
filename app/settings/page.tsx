@@ -29,7 +29,6 @@ import type { CorrectionFrequency, ProficiencyLevel } from "@/lib/types";
 
 interface Health {
   ai: { configured: boolean; provider: string; model: string };
-  database: { configured: boolean };
 }
 
 export function SettingsForm() {
@@ -88,6 +87,7 @@ export function SettingsForm() {
         lang: target.speechTag,
         voiceId: settings.voiceId,
         rate: settings.playbackRate,
+        gender: settings.voiceGender,
       },
       { onError: () => setHealth((h) => h) },
     );
@@ -185,10 +185,13 @@ export function SettingsForm() {
                   className="h-11 min-w-0 flex-1 rounded-xl border border-edge bg-[var(--surface-solid)] px-3 text-sm text-ink outline-none focus:border-brand disabled:opacity-50"
                 >
                   <option value="">
-                    {voices.length === 0 ? "Loading voices…" : `Auto — best ${target.name} voice`}
+                    {voices.length === 0
+                      ? "Loading voices…"
+                      : `Auto — ${settings.voiceGender === "any" ? "best" : settings.voiceGender} ${target.name} voice`}
                   </option>
                   {voices.map((v) => (
                     <option key={v.id} value={v.id}>
+                      {v.gender === "male" ? "♂ " : v.gender === "female" ? "♀ " : ""}
                       {v.name} ({v.lang})
                       {v.isDefault ? " ★" : ""}
                     </option>
@@ -199,6 +202,26 @@ export function SettingsForm() {
                 </Button>
               </div>
             </label>
+            <p className="mt-1.5 text-[11px] text-ink-faint">
+              Browsers don&apos;t label voice gender — pick a specific voice above for an exact
+              match, or use Auto with a preference.
+            </p>
+          </div>
+
+          <div className="mt-4">
+            <span className="mb-1.5 block text-xs font-semibold text-ink-soft">
+              Preferred voice (Auto mode)
+            </span>
+            <Segmented<"male" | "female" | "any">
+              ariaLabel="Preferred voice gender"
+              value={settings.voiceGender}
+              onChange={(voiceGender) => update({ voiceGender })}
+              options={[
+                { value: "male", label: "♂ Male" },
+                { value: "female", label: "♀ Female" },
+                { value: "any", label: "Any" },
+              ]}
+            />
           </div>
 
           <div className="mt-4">
@@ -306,21 +329,6 @@ export function SettingsForm() {
             <li className="flex items-center gap-2.5">
               {health == null ? (
                 <Loader2 className="size-4 animate-spin text-ink-faint" />
-              ) : health.database.configured ? (
-                <CheckCircle2 className="size-4 text-good" />
-              ) : (
-                <CircleAlert className="size-4 text-ink-faint" />
-              )}
-              <span className="text-ink">
-                Database{" "}
-                <span className="text-ink-faint">
-                  · {health?.database.configured ? "Postgres mirror active" : "local only"}
-                </span>
-              </span>
-            </li>
-            <li className="flex items-center gap-2.5">
-              {health == null ? (
-                <Loader2 className="size-4 animate-spin text-ink-faint" />
               ) : typeof window !== "undefined" &&
                 ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) ? (
                 <CheckCircle2 className="size-4 text-good" />
@@ -343,7 +351,7 @@ export function SettingsForm() {
           <ul className="mt-3 list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-ink-soft">
             <li>Microphone audio is only used for live transcription — nothing is recorded to disk.</li>
             <li>Browser speech may route audio through your browser vendor&apos;s service (e.g. Chrome → Google).</li>
-            <li>Transcripts & summaries stay in this browser&apos;s localStorage unless you connect a database.</li>
+            <li>Transcripts & summaries stay in this browser&apos;s localStorage — this app has no database.</li>
             <li>Your API keys never reach the browser — all AI calls run through server routes.</li>
           </ul>
         </section>

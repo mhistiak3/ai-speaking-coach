@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSettingsStore } from "@/lib/store/settings-store";
-import { useSessionsStore, syncSessionToServer } from "@/lib/store/session-store";
+import { useSessionsStore } from "@/lib/store/session-store";
 import { useWordPracticeStore } from "@/lib/store/word-practice-store";
 import { webSpeechStt } from "@/lib/speech/stt-web-speech";
 import { browserTts } from "@/lib/speech/tts-browser";
@@ -164,6 +164,7 @@ export function useConversation(sessionId: string) {
             lang: target.speechTag,
             voiceId: settings.voiceId,
             rate: settings.playbackRate,
+            gender: settings.voiceGender,
           },
           {
             onEnd: () => {
@@ -179,7 +180,7 @@ export function useConversation(sessionId: string) {
           },
         );
       }),
-    [settings.autoPlayVoice, settings.muted, settings.playbackRate, settings.voiceId, target.speechTag],
+    [settings.autoPlayVoice, settings.muted, settings.playbackRate, settings.voiceGender, settings.voiceId, target.speechTag],
   );
 
   // ── API calls ─────────────────────────────────────────────────────────
@@ -416,14 +417,12 @@ export function useConversation(sessionId: string) {
     void speakReply(session.greeting);
   }, [addMessage, session, sessionId, speakReply]);
 
-  const endSession = useCallback(async () => {
+  const endSession = useCallback(() => {
     turnRef.current?.cancel();
     speakHandleRef.current?.cancel();
     markEnded(sessionId);
     const finished = useSessionsStore.getState().sessions.find((x) => x.id === sessionId);
-    const stored = finished ? await syncSessionToServer(finished) : false;
-    if (stored) useSessionsStore.getState().markSynced(sessionId);
-    return { synced: stored, durationMs: (finished?.endedAt ?? Date.now()) - (finished?.createdAt ?? Date.now()) };
+    return { durationMs: (finished?.endedAt ?? Date.now()) - (finished?.createdAt ?? Date.now()) };
   }, [markEnded, sessionId]);
 
   return {

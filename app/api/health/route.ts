@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getEnv, isAIConfigured, isDatabaseConfigured } from "@/lib/env";
+import { getEnv, isAIConfigured } from "@/lib/env";
 
 /** Public status of server integrations — no secrets, safe for the client. */
 export async function GET() {
@@ -11,8 +11,8 @@ export async function GET() {
       provider: "opencode-go",
       model: getEnv().OPENCODE_MODEL,
     },
-    database: {
-      configured: isDatabaseConfigured(),
+    storage: {
+      mode: "local-device",
     },
     speech: {
       stt: "browser-web-speech",

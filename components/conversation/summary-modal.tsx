@@ -63,8 +63,8 @@ export function SummaryModal({ session, open, onClose }: SummaryModalProps) {
             {stats.wordsSpoken} words spoken
           </p>
         </div>
-        <Badge tone={session.synced ? "good" : "neutral"} className="ml-auto">
-          {session.synced ? "synced" : "saved locally"}
+        <Badge tone="neutral" className="ml-auto">
+          saved on this device
         </Badge>
       </div>
 

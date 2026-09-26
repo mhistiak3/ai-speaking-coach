@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   CalendarDays,
   Clock,
   Flame,
   MessagesSquare,
-  Database,
+  Smartphone,
   Sparkles,
   Type,
 } from "lucide-react";
@@ -22,31 +22,10 @@ import { useHydrated } from "@/lib/hooks/use-hydrated";
 import { SCENARIOS } from "@/lib/scenarios";
 import { cn, dayKey, formatDuration } from "@/lib/utils";
 
-interface DbAggregate {
-  sessions: number;
-  totalSpeakingSeconds: number;
-  avgPronunciation: number | null;
-  topDifficultWords: { word: string; count: number }[];
-}
-
 export function ProgressDashboard() {
   const sessions = useSessionsStore((s) => s.sessions);
   const words = useWordPracticeStore((s) => s.words);
   const hydrated = useHydrated();
-  const [dbAggregate, setDbAggregate] = useState<DbAggregate | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/progress")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.enabled && data.aggregate) setDbAggregate(data.aggregate);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const finished = useMemo(
     () => (hydrated ? sessions.filter((s) => s.endedAt != null) : []),
@@ -129,9 +108,9 @@ export function ProgressDashboard() {
           <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
             Your progress
           </h1>
-          <Badge tone={dbAggregate ? "good" : "neutral"}>
-            <Database className="size-3" />
-            {dbAggregate ? "Postgres mirror on" : "stored on this device"}
+          <Badge tone="neutral">
+            <Smartphone className="size-3" />
+            stored on this device
           </Badge>
         </div>
 

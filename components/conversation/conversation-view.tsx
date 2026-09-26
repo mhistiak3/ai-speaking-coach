@@ -100,14 +100,13 @@ export function ConversationView({ session }: ConversationViewProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, convo]);
 
-  const endSession = useCallback(async () => {
+  const endSession = useCallback(() => {
     setEndDialog(false);
+    convo.endSession();
     if (messages.length === 0) {
       router.push("/practice");
       return;
     }
-    const { synced } = await convo.endSession();
-    void synced;
     setSummaryOpen(true);
   }, [convo, messages.length, router]);
 
@@ -389,7 +388,7 @@ export function ConversationView({ session }: ConversationViewProps) {
             <Button variant="ghost" onClick={() => setEndDialog(false)}>
               Keep talking
             </Button>
-            <Button variant="danger" onClick={() => void endSession()}>
+            <Button variant="danger" onClick={endSession}>
               End &amp; see summary
             </Button>
           </div>

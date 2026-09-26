@@ -34,6 +34,7 @@ export default function WordPracticePage() {
   const targetLanguage = useSettingsStore((s) => s.targetLanguage);
   const nativeLanguage = useSettingsStore((s) => s.nativeLanguage);
   const voiceId = useSettingsStore((s) => s.voiceId);
+  const voiceGender = useSettingsStore((s) => s.voiceGender);
   const target = getLanguage(targetLanguage);
   const native = getLanguage(nativeLanguage);
 
@@ -58,9 +59,9 @@ export default function WordPracticePage() {
   const hear = useCallback(
     (text: string, rate: number) => {
       browserTts.cancelAll();
-      browserTts.speak(text, { lang: target.speechTag, voiceId, rate });
+      browserTts.speak(text, { lang: target.speechTag, voiceId, rate, gender: voiceGender });
     },
-    [target.speechTag, voiceId],
+    [target.speechTag, voiceId, voiceGender],
   );
 
   const onFinal = useCallback(

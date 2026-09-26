@@ -91,6 +91,8 @@ export interface VoiceInfo {
   lang: string;
   isDefault: boolean;
   localService: boolean;
+  /** Heuristic guess from the voice name — browser APIs don't expose gender. */
+  gender: "male" | "female" | "unknown";
 }
 
 export interface SpeakOptions {
@@ -98,6 +100,8 @@ export interface SpeakOptions {
   voiceId?: string | null;
   rate?: number;
   pitch?: number;
+  /** Bias for the auto-picked voice (ignored when voiceId is set). */
+  gender?: "any" | "male" | "female";
 }
 
 export interface SpeakCallbacks {

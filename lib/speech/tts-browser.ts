@@ -26,7 +26,46 @@ function toVoiceInfo(v: SpeechSynthesisVoice): VoiceInfo {
     lang: v.lang,
     isDefault: v.default,
     localService: v.localService,
+    gender: guessGender(v.name),
   };
+}
+
+/**
+ * Browser voice APIs don't expose gender — only well-known names do.
+ * Conservative keyword lists; unknown names stay "unknown" (no penalty).
+ */
+const MALE_CUES = [
+  "male", "david", "george", "fred", "alex", "rishi", "aaron", "arthur",
+  "oliver", "james", "mark", "guy", "thomas", "william", "eric", "michael",
+  "steve", "paul", "cosmo", "daniel", "tom", "roger", "andrew", "liam",
+];
+const FEMALE_CUES = [
+  "female", "zira", "susan", "samantha", "karen", "moira", "tessa", "victoria",
+  "hazel", "linda", "heather", "catherine", "aria", "jenny", "michelle",
+  "clara", "sonia", "natasha", "fiona", "amelie", "anna", "ellen", "kalinda",
+  "pamela", "sara", "serena", "hulda", "katya", "luciana", "joana", "yuna",
+];
+
+export function guessGender(name: string): "male" | "female" | "unknown" {
+  const n = name.toLowerCase();
+  if (/\b(microsoft )?(man|him)\b/.test(n)) return "male";
+  for (const c of MALE_CUES) if (n.includes(c)) return "male";
+  for (const c of FEMALE_CUES) if (n.includes(c)) return "female";
+  return "unknown";
+}
+
+/** Score a voice for auto-selection: language fit first, gender preference second. */
+function scoreVoice(v: SpeechSynthesisVoice, lang: string, gender: "any" | "male" | "female"): number {
+  let score = 0;
+  if (v.lang === lang) score += 4;
+  else if (v.lang.toLowerCase().startsWith(lang.toLowerCase().split("-")[0]!)) score += 2;
+  if (v.default) score += 1;
+  if (gender !== "any") {
+    const g = guessGender(v.name);
+    if (g === gender) score += 3;
+    else if (g !== "unknown" && g !== gender) score -= 2;
+  }
+  return score;
 }
 
 let voicesPromise: Promise<SpeechSynthesisVoice[]> | null = null;
@@ -100,13 +139,19 @@ export const browserTts: TextToSpeechProvider = {
     utterance.pitch = options.pitch ?? 1;
 
     const voiceId = options.voiceId;
+    const gender = options.gender ?? "any";
     loadVoices().then((voices) => {
       if (cancelled || ended) return;
-      const voice =
-        (voiceId && voices.find((v) => v.voiceURI === voiceId)) ||
-        voices.find((v) => v.lang === options.lang && v.default) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith(options.lang.toLowerCase().split("-")[0]!)) ||
-        null;
+      const langPrefix = options.lang.toLowerCase().split("-")[0]!;
+      const candidates = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
+      const pool = candidates.length > 0 ? candidates : voices;
+      let voice: SpeechSynthesisVoice | null =
+        (voiceId ? pool.find((v) => v.voiceURI === voiceId) ?? null : null) || null;
+      if (!voice && pool.length > 0) {
+        voice = pool.reduce((best, v) =>
+          scoreVoice(v, options.lang, gender) > scoreVoice(best, options.lang, gender) ? v : best,
+        );
+      }
       if (voice) utterance.voice = voice;
     });
 
