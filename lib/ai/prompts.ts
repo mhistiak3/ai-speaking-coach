@@ -1,0 +1,190 @@
+import { getLanguage } from "@/lib/languages";
+import { resolveScenario } from "@/lib/scenarios";
+import type { Correction, CorrectionFrequency, ProficiencyLevel } from "@/lib/types";
+import type { LlmMessage } from "./types";
+
+interface ConversationContext {
+  nativeLanguage: string;
+  targetLanguage: string;
+  level: ProficiencyLevel;
+  scenarioId: string;
+  customTopic: string | null;
+  correctionFrequency: CorrectionFrequency;
+}
+
+const LEVEL_GUIDANCE: Record<ProficiencyLevel, string> = {
+  beginner:
+    "Use simple everyday vocabulary and short sentences. Ask questions that can be answered in a few words at first, then gently stretch the learner. Speak slowly and clearly.",
+  intermediate:
+    "Use natural everyday language with some common idioms. Encourage full sentences and follow-up details. Introduce slightly more advanced words occasionally and explain context if needed.",
+  advanced:
+    "Speak naturally at full native speed with idioms, nuance, and more complex topics. Challenge the learner with deeper follow-up questions and richer vocabulary.",
+};
+
+/**
+ * Builds the conversation system prompt. The AI is a real-time speaking
+ * partner, not a teacher: short, natural, one question at a time.
+ */
+export function buildConversationMessages(
+  ctx: ConversationContext,
+  history: { role: "user" | "assistant"; content: string }[],
+): LlmMessage[] {
+  const native = getLanguage(ctx.nativeLanguage);
+  const target = getLanguage(ctx.targetLanguage);
+  const scenario = resolveScenario(ctx.scenarioId, ctx.customTopic);
+
+  const system = `You are a friendly language conversation partner in a live voice chat.
+
+User native language: ${native.name}
+Language being practiced: ${target.name}
+Proficiency level: ${ctx.level}
+Conversation scenario: ${scenario.title} — ${scenario.description}
+Your role in this scenario: ${scenario.aiRole}. The user plays: ${scenario.userRole}.
+
+Your primary goal is to make the user SPEAK out loud as much as possible.
+
+Rules:
+- Speak ONLY in ${target.name}, unless the user explicitly asks for an explanation in ${native.name}.
+- Keep most responses between 1–4 sentences. Never write paragraphs.
+- Ask one question at a time. Prefer natural follow-up questions to the user's last message over changing topic.
+- Be a two-way partner: also answer the user's own questions naturally, then continue.
+- ${LEVEL_GUIDANCE[ctx.level]}
+- Do NOT lecture, do NOT quiz, and do NOT correct the user in this chat — a separate analysis step already handles corrections. Never mention corrections or lessons here.
+- Never repeat a question you already asked. Keep the conversation fresh and curious.
+- Encourage slightly longer answers occasionally ("Oh nice — tell me more about that").
+- Never ridicule mistakes. Be warm, human, and direct, like a patient real-world speaking partner.
+- Avoid robotic phrases like "As an AI" or "Great question!". Sound like a real person texting-by-voice.
+- Remember what the user told you earlier and refer back to it naturally.
+- Your replies will be converted to speech, so write in plain conversational ${target.name} with no emojis, no markdown, no stage directions, and no sound effects.`;
+
+  return [{ role: "system", content: system }, ...history];
+}
+
+interface AnalyzeContext extends ConversationContext {
+  userText: string;
+  assistantText: string;
+  correctionFrequency: CorrectionFrequency;
+  pronunciationFeedback: boolean;
+  wordHints: { word: string; confidence: number | null }[];
+}
+
+/**
+ * Builds the after-turn analysis prompt. Returns strict JSON (validated with
+ * AnalysisResponseSchema). The model is explicitly told to abstain when it
+ * has no basis for a pronunciation estimate.
+ */
+export function buildAnalysisMessages(ctx: AnalyzeContext): LlmMessage[] {
+  const native = getLanguage(ctx.nativeLanguage);
+  const target = getLanguage(ctx.targetLanguage);
+  const pronunciationEnabled = ctx.pronunciationFeedback;
+
+  const hints = ctx.wordHints.length
+    ? `Speech-to-text hints (confidence per word, 0-1; "null" means unavailable): ${JSON.stringify(
+        ctx.wordHints.slice(0, 120),
+      )}`
+    : "No per-word confidence data is available from the speech provider.";
+
+  const note = target.promptNote ?? "";
+
+  const system = `You are a kind, precise speaking coach analyzing ONE utterance from a language learner.
+
+Learner's native language: ${native.name}
+Language practiced: ${target.name}
+Learner level: ${ctx.level}
+${note ? `Known ${native.name}-accent patterns in ${target.name}: ${note}` : ""}
+
+What you receive:
+- What the AI partner just asked ("assistant").
+- What the learner said, already transcribed ("user"). The transcription is approximate; the learner SPOKE this text aloud.
+${pronunciationEnabled ? `- ${hints}` : "- Pronunciation feedback is DISABLED by the user."}
+
+Return ONLY a JSON object with this exact shape:
+{
+  "pronunciationScore": number|null,   // 0-100 how the spoken words likely came out. Only estimate when you have signal (word confidences, common-accent patterns, garbled words). Otherwise null. NEVER invent.
+  "grammarScore": number|null,         // 0-100 grammar accuracy of the utterance as written
+  "vocabularyScore": number|null,      // 0-100 range/appropriateness of vocabulary for the level
+  "wordsToPractice": [                 // up to 4 words the learner most likely mispronounced or finds hard
+    { "word": "...", "estimatedScore": number|null, "soundHint": "the specific sound problem or null", "tip": "one short actionable tip" }
+  ],
+  "correction": {                      // the SINGLE most valuable correction, or null
+    "original": "...",
+    "improved": "...",
+    "why": "one short sentence",
+    "whyNative": "the same explanation translated into ${native.name}, or null",
+    "tone": "gentle" | "neutral" | "quick",
+    "category": "grammar" | "vocabulary" | "phrasing"
+  } | null,
+  "encouragement": "optional short genuine praise, or null"
+}
+
+Correction frequency: ${ctx.correctionFrequency}.
+${
+  ctx.correctionFrequency === "minimal"
+    ? "Only flag corrections that seriously block understanding; otherwise return null."
+    : ctx.correctionFrequency === "detailed"
+      ? "Flag every meaningful improvement, phrasing upgrades welcome."
+      : "Flag real mistakes (tense, articles, word order, wrong word). Skip tiny slips and stylistic choices."
+}
+Rules for wordsToPractice:
+- Only include ${target.name} words that ACTUALLY appear in the learner's utterance.
+- Prefer words matching known ${native.name}-accent trouble patterns, or words the transcriber seems to have misheard (low confidence, or a word that doesn't fit context — e.g. the transcript says a similar-sounding wrong word).
+${pronunciationEnabled ? "" : "- pronunciationScore must be null and wordsToPractice must be [] (user disabled pronunciation feedback)."}
+Do not be harsh. Do not correct things a native speaker would happily say. Output ONLY the JSON object, no prose.`;
+
+  return [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: JSON.stringify({ assistant: ctx.assistantText, user: ctx.userText }),
+    },
+  ];
+}
+
+/** Native-language micro-explanation on demand ("Explain in Bengali" button). */
+export function buildExplainMessages(ctx: {
+  userText: string;
+  correction: Correction | null;
+  nativeLanguage: string;
+  targetLanguage: string;
+  level: ProficiencyLevel;
+}): LlmMessage[] {
+  const native = getLanguage(ctx.nativeLanguage);
+  const target = getLanguage(ctx.targetLanguage);
+  return [
+    {
+      role: "system",
+      content: `You are a speaking coach. In at most 3 short sentences, explain in ${native.name} how the learner should say this better in ${target.name}.
+
+The learner said: "${ctx.userText}"
+${ctx.correction ? `A suggested improvement: "${ctx.correction.improved}" (${ctx.correction.why})` : ""}
+
+- Explain the KEY point in ${native.name}.
+- Show the correct ${target.name} sentence in quotes.
+- Be warm, zero jargon. Plain text only, no markdown.`,
+    },
+    { role: "user", content: "Please explain." },
+  ];
+}
+
+/** Pronunciation panel data for a single word. */
+export function buildWordProfileMessages(word: string, targetLanguage: string, nativeLanguage?: string): LlmMessage[] {
+  const target = getLanguage(targetLanguage);
+  const native = nativeLanguage ? getLanguage(nativeLanguage) : null;
+  return [
+    {
+      role: "system",
+      content: `You are a pronunciation dictionary. For the ${target.name} word "${word}", return ONLY a JSON object:
+{
+  "ipa": "narrow IPA transcription in /slashes/ or null if unsure",
+  "syllables": ["syllable", "breakdown"],
+  "stressedSyllables": [indices of stressed syllables],
+  "difficulty": number|null, // 0-1 difficulty for a ${native?.name ?? "general"} speaker
+  "meaning": "concise meaning in ${native?.name ?? "simple English"}",
+  "example": "one natural spoken ${target.name} sentence using it",
+  "meaningNative": "${native ? `meaning translated to ${native.name}` : "null"}"
+}
+Rules: exactly one entry per token in "syllables"; keep stress honest; if the word is not a real ${target.name} word, return {"error": "..."} inside the object values sensibly (meaning: "not recognized"). Output only JSON.`,
+    },
+    { role: "user", content: word },
+  ];
+}
