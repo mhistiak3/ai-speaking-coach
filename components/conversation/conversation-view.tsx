@@ -204,7 +204,7 @@ export function ConversationView({ session }: ConversationViewProps) {
               scenarioEmoji={scenario.emoji}
               scenarioTitle={scenario.title}
               targetName={target.name}
-              onStart={() => convo.deliverGreeting()}
+              onStart={() => void convo.deliverGreeting()}
             />
           )}
 

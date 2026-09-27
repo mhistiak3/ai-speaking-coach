@@ -21,7 +21,9 @@ export const ConversationRequestSchema = z.object({
   level: LevelSchema,
   scenarioId: z.string().min(1).max(64),
   customTopic: z.string().max(200).nullish(),
-  messages: z.array(ChatMessageSchema).min(1).max(60),
+  /** true → generate the session's opening line (history may be empty). */
+  opening: z.boolean().optional().default(false),
+  messages: z.array(ChatMessageSchema).min(0).max(60),
 });
 
 export const CorrectionSchema = z.object({

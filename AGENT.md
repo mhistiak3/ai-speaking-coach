@@ -91,6 +91,7 @@ scripts/                      icon-source.svg + generate-icons.mjs (node scripts
 - **Hands-free loop.** When `settings.handsFree` is on, `speakReply` bumps `autoListenTick`; an effect reopens the mic ~450ms after the AI's voice ends (or immediately when muted/autoplay-off). If the learner says nothing for 5s, the turn closes quietly (no error card) and waits for a manual tap. One-shot per reply — never an endless loop.
 - **Never run a second `getUserMedia`/AudioContext stream while `SpeechRecognition` is active.** Android treats the microphone as exclusive — the recognizer then silently receives nothing (works fine on desktop, broken on phone; the classic mobile-only bug). The orb waveform animates synthetically during listening for exactly this reason.
 - **Turn-taking.** The mic stays disabled until AI speech ends (`await speakReply(...)` in the orchestrator). `deliverGreeting()` must be triggered by a user gesture (iOS TTS policy).
+- **Language fidelity.** The session opening is AI-GENERATED in the practice language via `/api/conversation` with `opening: true` (the static scenario `startingPrompt` is English-only — used as an idea seed + offline fallback only). The conversation system prompt requires "ALWAYS speak {target}" and instructs the model to reply in the target language even when the learner drifts into another one.
 
 ## Data & privacy
 
