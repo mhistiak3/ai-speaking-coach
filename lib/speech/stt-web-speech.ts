@@ -32,9 +32,6 @@ class WebSpeechTurn implements SpeechTurn {
   private startedAt = 0;
   private finalWords: TranscriptWord[] = [];
   private finalText = "";
-  private committed = "";
-  private sessionFinal = "";
-  private lastResultsLen = 0;
   private utteranceConfidence: number | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private noSpeechTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,39 +67,42 @@ class WebSpeechTurn implements SpeechTurn {
     };
 
     /**
-     * IDEMPOTENT reconstruction. Some engines (notably Android Chrome)
-     * re-deliver already-final segments inside later events and can restart
-     * the results list mid-session. Appending new chunks therefore produces
-     * duplicated text ("5 words → 100 words"). Instead, every event rebuilds
-     * the transcript from the ENTIRE `results` list — re-delivery becomes a
-     * harmless no-op — with a `committed` prefix to survive engine resets.
+     * Android Chrome delivers results in two broken styles:
+     *  1. re-delivering the SAME segment in later events, and
+     *  2. each new final chunk RESTATING the entire sentence so far
+     *     ("no" → "no the" → "no the cup" → … — cumulative restatements).
+     * Naively joining produces duplicated cascades ("5 words → 100 words").
+     *
+     * Fix: a STATEFUL IDEMPOTENT MERGE. Every event re-merges the entire
+     * results list into `finalText` through `mergeFinalChunk`, which skips
+     * contained chunks, replaces on restatements, and stitches word
+     * overlaps. Re-delivery is therefore a no-op, restatements grow the
+     * text correctly, and engine resets need no special handling.
      */
     rec.onresult = (event) => {
-      let finals = "";
       let interim = "";
+      let confidence: number | null = null;
+      let acc = this.finalText;
+
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const alt = result?.[0];
         if (!alt) continue;
-        const chunk = alt.transcript.trim();
         if (result.isFinal) {
-          if (chunk) finals += (finals ? " " : "") + chunk;
+          acc = this.mergeFinalChunk(acc, alt.transcript);
+          if (alt.confidence > 0 && alt.confidence < 1) {
+            confidence = Math.max(confidence ?? 0, alt.confidence);
+          }
         } else {
           interim += alt.transcript;
         }
-        if (alt.confidence > 0 && alt.confidence < 1) {
-          this.utteranceConfidence = Math.max(this.utteranceConfidence ?? 0, alt.confidence);
-        }
       }
 
-      // Engine reset: the result list shrank → freeze the previous finals.
-      if (event.results.length < this.lastResultsLen) {
-        this.committed = [this.committed, this.sessionFinal].filter(Boolean).join(" ");
+      if (confidence != null) {
+        this.utteranceConfidence = Math.max(this.utteranceConfidence ?? 0, confidence);
       }
-      this.lastResultsLen = event.results.length;
-      this.sessionFinal = finals;
-      this.finalText = [this.committed, finals].filter(Boolean).join(" ");
-      this.finalWords = this.finalText
+      this.finalText = acc;
+      this.finalWords = acc
         .split(/\s+/)
         .filter(Boolean)
         .map((word) => ({ word, confidence: null }));
@@ -111,8 +111,9 @@ class WebSpeechTurn implements SpeechTurn {
       this.armSilenceTimer();
       this.armNoSpeechTimer();
 
-      // Show committed + final + in-flight speech together in the bubble.
-      const display = [this.finalText, interim.trim()].filter(Boolean).join(" ");
+      // Show confirmed + in-flight speech together (also deduped — Android
+      // interims restate the sentence too).
+      const display = this.mergeFinalChunk(acc, interim.trim());
       if (display) this.callbacks.onInterim?.(display);
     };
 
@@ -153,6 +154,33 @@ class WebSpeechTurn implements SpeechTurn {
     } catch {
       this.fail(speechError("transcription-failed", "Could not start recording.", true));
     }
+  }
+
+  /**
+   * Idempotently merge one final chunk into accumulated text.
+   *  - chunk already contained in acc            → keep acc (re-delivery)
+   *  - chunk restates acc (+ maybe adds words)   → chunk wins  (restatement)
+   *  - word-level suffix/prefix overlap          → stitch once
+   *  - otherwise                                 → append
+   */
+  private mergeFinalChunk(acc: string, incoming: string): string {
+    const a = acc.trim();
+    const c = incoming.trim();
+    if (!c) return a;
+    if (!a) return c;
+    if (c === a || a.includes(c)) return a;
+    if (c.startsWith(a)) return c;
+
+    const aw = a.split(/\s+/);
+    const cw = c.split(/\s+/);
+    for (let k = Math.min(aw.length, cw.length); k > 0; k--) {
+      const suffix = aw.slice(aw.length - k).join(" ");
+      const prefix = cw.slice(0, k).join(" ");
+      if (suffix === prefix) {
+        return cw.length > k ? `${a} ${cw.slice(k).join(" ")}` : a;
+      }
+    }
+    return `${a} ${c}`;
   }
 
   stop(): void {
