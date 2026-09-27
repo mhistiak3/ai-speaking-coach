@@ -38,6 +38,7 @@ const MALE_CUES = [
   "male", "david", "george", "fred", "alex", "rishi", "aaron", "arthur",
   "oliver", "james", "mark", "guy", "thomas", "william", "eric", "michael",
   "steve", "paul", "cosmo", "daniel", "tom", "roger", "andrew", "liam",
+  "albert", "gordon", "junior", "ralph", "bruce", "jack",
 ];
 const FEMALE_CUES = [
   "female", "zira", "susan", "samantha", "karen", "moira", "tessa", "victoria",
@@ -66,6 +67,32 @@ function scoreVoice(v: SpeechSynthesisVoice, lang: string, gender: "any" | "male
     else if (g !== "unknown" && g !== gender) score -= 2;
   }
   return score;
+}
+
+/**
+ * Decide which voice to use — pure function so it can run SYNCHRONOUSLY
+ * before synth.speak(). (Setting `utterance.voice` after speak() starts is
+ * ignored by the engine — the classic "voice change does nothing" bug.)
+ *
+ * Precedence: explicit user pick (any language) → best-scoring voice for
+ * the target language + gender preference.
+ */
+export function resolveVoice(
+  voices: SpeechSynthesisVoice[],
+  options: SpeakOptions,
+): SpeechSynthesisVoice | null {
+  if (voices.length === 0) return null;
+  if (options.voiceId) {
+    const picked = voices.find((v) => v.voiceURI === options.voiceId);
+    if (picked) return picked;
+  }
+  const langPrefix = options.lang.toLowerCase().split("-")[0]!;
+  const candidates = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
+  const pool = candidates.length > 0 ? candidates : voices;
+  const gender = options.gender ?? "any";
+  return pool.reduce((best, v) =>
+    scoreVoice(v, options.lang, gender) > scoreVoice(best, options.lang, gender) ? v : best,
+  );
 }
 
 let voicesPromise: Promise<SpeechSynthesisVoice[]> | null = null;
@@ -133,50 +160,50 @@ export const browserTts: TextToSpeechProvider = {
     let cancelled = false;
     let ended = false;
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = options.lang;
-    utterance.rate = options.rate ?? 1;
-    utterance.pitch = options.pitch ?? 1;
-
-    const voiceId = options.voiceId;
-    const gender = options.gender ?? "any";
-    loadVoices().then((voices) => {
+    const start = (voices: SpeechSynthesisVoice[]) => {
       if (cancelled || ended) return;
-      const langPrefix = options.lang.toLowerCase().split("-")[0]!;
-      const candidates = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
-      const pool = candidates.length > 0 ? candidates : voices;
-      let voice: SpeechSynthesisVoice | null =
-        (voiceId ? pool.find((v) => v.voiceURI === voiceId) ?? null : null) || null;
-      if (!voice && pool.length > 0) {
-        voice = pool.reduce((best, v) =>
-          scoreVoice(v, options.lang, gender) > scoreVoice(best, options.lang, gender) ? v : best,
-        );
-      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = options.lang;
+      utterance.rate = options.rate ?? 1;
+      utterance.pitch = options.pitch ?? 1;
+      // Voice MUST be assigned before synth.speak() — engines snapshot the
+      // utterance when speech starts; late assignment is silently ignored.
+      const voice = resolveVoice(voices, options);
       if (voice) utterance.voice = voice;
-    });
 
-    utterance.onstart = () => {
-      stopKeepAlive = startKeepAlive(synth);
-      callbacks.onStart?.();
-    };
-    utterance.onboundary = (event) => callbacks.onBoundary?.(event.charIndex);
-    utterance.onend = () => {
-      ended = true;
-      stopKeepAlive?.();
-      callbacks.onEnd?.();
-    };
-    utterance.onerror = (event) => {
-      ended = true;
-      stopKeepAlive?.();
-      // "interrupted"/"canceled" happen on purpose when we cancel; report only real failures.
-      if (event.error !== "interrupted" && event.error !== "canceled") {
-        callbacks.onError?.(speechError("synthesis-failed", `Voice playback failed (${event.error}).`, true));
-      } else {
+      utterance.onstart = () => {
+        stopKeepAlive = startKeepAlive(synth);
+        callbacks.onStart?.();
+      };
+      utterance.onboundary = (event) => callbacks.onBoundary?.(event.charIndex);
+      utterance.onend = () => {
+        ended = true;
+        stopKeepAlive?.();
         callbacks.onEnd?.();
-      }
+      };
+      utterance.onerror = (event) => {
+        ended = true;
+        stopKeepAlive?.();
+        // "interrupted"/"canceled" happen on purpose when we cancel; report only real failures.
+        if (event.error !== "interrupted" && event.error !== "canceled") {
+          callbacks.onError?.(speechError("synthesis-failed", `Voice playback failed (${event.error}).`, true));
+        } else {
+          callbacks.onEnd?.();
+        }
+      };
+
+      synth.speak(utterance);
     };
 
-    synth.speak(utterance);
+    const voicesNow = synth.getVoices();
+    if (voicesNow.length > 0) {
+      start(voicesNow);
+    } else {
+      // Some engines load voices asynchronously on first use — wait so the
+      // chosen voice applies to THIS utterance, not the next one.
+      void loadVoices().then(start);
+    }
 
     return {
       cancel() {
