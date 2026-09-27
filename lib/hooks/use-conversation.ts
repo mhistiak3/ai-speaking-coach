@@ -361,7 +361,7 @@ export function useConversation(sessionId: string) {
           const friendly: Record<string, string> = {
             "mic-permission": "Microphone access was blocked. Allow it in your browser settings and try again.",
             "no-microphone": "No microphone found. Plug one in or check your device settings.",
-            "empty-speech": "Didn't catch anything — tap the mic and speak for a second.",
+            "empty-speech": "Didn't catch any speech. Speak up — if this keeps happening, close other apps using the mic (camera, voice recorders).",
             network: "The speech service had a network hiccup. Try again.",
             "transcription-failed": "Couldn't transcribe that. Try again?",
             "unsupported-browser": "This browser can't do speech recognition.",

@@ -18,6 +18,8 @@ import {
  *    these as pronunciation measurements.
  *  - Audio may be processed by the browser vendor's speech service
  *    (e.g. Google on Chrome). We surface this in Settings → Privacy.
+ *  - NEVER open a second getUserMedia stream while this is running —
+ *    Android treats the mic as exclusive (see AGENT.md).
  */
 
 function getRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -30,6 +32,9 @@ class WebSpeechTurn implements SpeechTurn {
   private startedAt = 0;
   private finalWords: TranscriptWord[] = [];
   private finalText = "";
+  private committed = "";
+  private sessionFinal = "";
+  private lastResultsLen = 0;
   private utteranceConfidence: number | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private noSpeechTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,37 +69,51 @@ class WebSpeechTurn implements SpeechTurn {
       this.armNoSpeechTimer();
     };
 
+    /**
+     * IDEMPOTENT reconstruction. Some engines (notably Android Chrome)
+     * re-deliver already-final segments inside later events and can restart
+     * the results list mid-session. Appending new chunks therefore produces
+     * duplicated text ("5 words → 100 words"). Instead, every event rebuilds
+     * the transcript from the ENTIRE `results` list — re-delivery becomes a
+     * harmless no-op — with a `committed` prefix to survive engine resets.
+     */
     rec.onresult = (event) => {
+      let finals = "";
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
-        if (!result) continue;
-        const alt = result[0];
+        const alt = result?.[0];
         if (!alt) continue;
+        const chunk = alt.transcript.trim();
         if (result.isFinal) {
-          const chunk = alt.transcript.trim();
-          if (chunk) {
-            this.finalText += (this.finalText ? " " : "") + chunk;
-            const words = chunk.split(/\s+/).filter(Boolean);
-            for (const w of words) this.finalWords.push({ word: w, confidence: null });
-          }
-          if (alt.confidence > 0 && alt.confidence < 1) {
-            this.utteranceConfidence = alt.confidence;
-          }
-          // Re-arm the silence watchdog: final chunks mean speech just happened,
-          // and continuous mode will keep listening otherwise.
-          this.lastHeardAt = Date.now();
-          this.armSilenceTimer();
+          if (chunk) finals += (finals ? " " : "") + chunk;
         } else {
           interim += alt.transcript;
         }
+        if (alt.confidence > 0 && alt.confidence < 1) {
+          this.utteranceConfidence = Math.max(this.utteranceConfidence ?? 0, alt.confidence);
+        }
       }
+
+      // Engine reset: the result list shrank → freeze the previous finals.
+      if (event.results.length < this.lastResultsLen) {
+        this.committed = [this.committed, this.sessionFinal].filter(Boolean).join(" ");
+      }
+      this.lastResultsLen = event.results.length;
+      this.sessionFinal = finals;
+      this.finalText = [this.committed, finals].filter(Boolean).join(" ");
+      this.finalWords = this.finalText
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => ({ word, confidence: null }));
+
       this.lastHeardAt = Date.now();
-      if (interim.trim()) {
-        this.callbacks.onInterim?.(interim.trim());
-        this.armSilenceTimer();
-      }
+      this.armSilenceTimer();
       this.armNoSpeechTimer();
+
+      // Show committed + final + in-flight speech together in the bubble.
+      const display = [this.finalText, interim.trim()].filter(Boolean).join(" ");
+      if (display) this.callbacks.onInterim?.(display);
     };
 
     rec.onerror = (event) => {
@@ -104,6 +123,14 @@ class WebSpeechTurn implements SpeechTurn {
         this.fail(speechError("no-microphone", "No microphone was found."));
       } else if (event.error === "no-speech") {
         this.fail(speechError("empty-speech", "Didn't catch any speech.", true));
+      } else if (event.error === "language-not-supported") {
+        this.fail(
+          speechError(
+            "transcription-failed",
+            `Speech recognition doesn't support ${this.options.lang} on this device.`,
+            false,
+          ),
+        );
       } else if (event.error === "network") {
         this.fail(speechError("network", "Speech service network error.", true));
       } else {
@@ -113,7 +140,7 @@ class WebSpeechTurn implements SpeechTurn {
 
     rec.onend = () => {
       if (this.finished) return;
-      // Natural or requested end of utterance — deliver the accumulated turn.
+      // Natural or requested end of utterance — deliver the turn once.
       if (this.finalWords.length > 0) {
         this.finish(this.buildResult());
       } else {

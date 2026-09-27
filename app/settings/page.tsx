@@ -203,8 +203,9 @@ export function SettingsForm() {
               </div>
             </label>
             <p className="mt-1.5 text-[11px] text-ink-faint">
-              Browsers don&apos;t label voice gender — pick a specific voice above for an exact
-              match, or use Auto with a preference.
+              {voices.length <= 1
+                ? "Only this one voice is installed on your device. Android: Settings → Accessibility → Text-to-speech output → Preferences → install voices. iOS: Settings → Accessibility → Spoken Content → Voices."
+                : "Voices come from your device/browser — install more in its text-to-speech settings. Browsers don't label voice gender; pick a specific voice above for an exact match, or use Auto with a preference."}
             </p>
           </div>
 
