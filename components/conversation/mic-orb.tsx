@@ -7,7 +7,10 @@ import { Waveform } from "./waveform";
 
 interface MicOrbProps {
   phase: ConversationPhase;
-  level: number;
+  /** Optional real mic level (0–1). When omitted the waveform animates
+   *  synthetically — the mic stream is reserved for speech recognition
+   *  (Android treats the microphone as exclusive). */
+  level?: number;
   onIdleTap: () => void;
   onListeningTap: () => void;
   disabled?: boolean;
@@ -74,7 +77,7 @@ export function MicOrb({ phase, level, onIdleTap, onListeningTap, disabled }: Mi
           disabled && "opacity-50",
         )}
         style={
-          listening
+          listening && level != null
             ? { transform: `scale(${1 + Math.min(level, 1) * 0.12})` }
             : undefined
         }

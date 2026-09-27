@@ -24,7 +24,6 @@ import { MessageBubble } from "@/components/conversation/message-bubble";
 import { FeedbackCard } from "@/components/conversation/feedback-card";
 import { SummaryModal } from "@/components/conversation/summary-modal";
 import { useConversation } from "@/lib/hooks/use-conversation";
-import { useMicLevel } from "@/lib/hooks/use-mic-level";
 import { useNow } from "@/lib/hooks/use-now";
 import { useSettingsStore } from "@/lib/store/settings-store";
 import { resolveScenario } from "@/lib/scenarios";
@@ -51,7 +50,6 @@ export function ConversationView({ session }: ConversationViewProps) {
 
   const convo = useConversation(session.id);
   const { phase, interim, error } = convo;
-  const { level, start: startLevel, stop: stopLevel } = useMicLevel();
 
   const muted = useSettingsStore((s) => s.muted);
   const playbackRate = useSettingsStore((s) => s.playbackRate);
@@ -78,14 +76,6 @@ export function ConversationView({ session }: ConversationViewProps) {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, interim, phase]);
-
-  // meter mic level only while listening (keeps AudioContext idle otherwise)
-  useEffect(() => {
-    if (phase === "listening") void startLevel();
-    else stopLevel();
-  }, [phase, startLevel, stopLevel]);
-
-  useEffect(() => () => stopLevel(), [stopLevel]);
 
   // keyboard: Space = push to talk (only when not focused on a control)
   useEffect(() => {
@@ -348,7 +338,6 @@ export function ConversationView({ session }: ConversationViewProps) {
           ) : (
             <MicOrb
               phase={phase}
-              level={level}
               disabled={ended}
               onIdleTap={() => convo.startListening()}
               onListeningTap={convo.stopListening}
