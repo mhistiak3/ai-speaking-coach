@@ -21,7 +21,7 @@ export function MessageBubble({ message, active, onSpeak }: MessageBubbleProps) 
           className={cn(
             "rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed shadow-sm",
             isUser
-              ? "btn-gradient rounded-br-lg"
+              ? "btn-solid rounded-br-lg"
               : cn(
                   "glass rounded-bl-lg",
                   active && "ring-1 ring-brand/40",

@@ -161,7 +161,7 @@ export default function WordPracticePage() {
                       <span
                         className={cn(
                           "rounded-2xl px-3.5 py-2 text-lg font-bold",
-                          stressed ? "btn-gradient text-white" : "glass text-ink-soft",
+                          stressed ? "btn-solid text-white" : "glass text-ink-soft",
                         )}
                       >
                         {sy}

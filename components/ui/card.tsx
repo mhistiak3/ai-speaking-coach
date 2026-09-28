@@ -4,7 +4,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("glass rounded-3xl shadow-xl shadow-black/5", className)}
+      className={cn("glass rounded-3xl", className)}
       {...props}
     />
   );

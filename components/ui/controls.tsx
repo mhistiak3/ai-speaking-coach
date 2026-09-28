@@ -35,7 +35,7 @@ export function Switch({ checked, onChange, label, description, disabled }: Swit
         onClick={() => onChange(!checked)}
         className={cn(
           "relative h-6.5 w-11 shrink-0 rounded-full transition-colors duration-200",
-          checked ? "btn-gradient" : "bg-black/15 dark:bg-white/15",
+          checked ? "btn-solid" : "bg-black/15 dark:bg-white/15",
         )}
       >
         <span

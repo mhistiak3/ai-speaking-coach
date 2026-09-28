@@ -64,7 +64,7 @@ export default function RootLayout({
         <link rel="shortcut icon" href="favicon.png" type="image/x-icon" />
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="app-bg antialiased">
+      <body className="antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

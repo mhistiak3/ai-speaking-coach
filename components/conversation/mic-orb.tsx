@@ -68,11 +68,11 @@ export function MicOrb({ phase, level, onIdleTap, onListeningTap, disabled }: Mi
         className={cn(
           "relative flex size-24 items-center justify-center rounded-full transition-all duration-300 active:scale-95",
           listening &&
-            "bg-gradient-to-br from-rose-500 to-red-600 shadow-2xl shadow-rose-500/40",
+            "bg-bad",
           busy && "glass",
-          speaking && "btn-gradient shadow-2xl shadow-brand/40 opacity-90",
+          speaking && "bg-brand opacity-90",
           phase === "idle" &&
-            "btn-gradient shadow-2xl shadow-brand/35 hover:brightness-110",
+            "bg-brand hover:bg-brand/90",
           phase === "error" && "glass border-2 border-bad/50",
           disabled && "opacity-50",
         )}

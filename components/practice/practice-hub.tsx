@@ -141,7 +141,7 @@ export function PracticeHub() {
                 key={s.id}
                 onClick={() => quickStart(s.id)}
                 className={cn(
-                  "glass group flex animate-fade-up flex-col items-start gap-2 rounded-3xl p-4 text-left transition-all hover:-translate-y-1 hover:border-brand/40 hover:shadow-xl hover:shadow-brand/10",
+                  "glass group flex animate-fade-up flex-col items-start gap-2 rounded-3xl p-4 text-left transition-colors hover:border-brand/40",
                 )}
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               >

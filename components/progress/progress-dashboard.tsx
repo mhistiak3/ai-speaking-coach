@@ -168,7 +168,7 @@ export function ProgressDashboard() {
                 <div
                   className={cn(
                     "w-full rounded-t-lg transition-all duration-500",
-                    d.count > 0 ? "btn-gradient" : "bg-edge",
+                    d.count > 0 ? "btn-solid" : "bg-edge",
                   )}
                   style={{ height: `${Math.max(6, (d.count / maxCount) * 100)}%` }}
                   title={`${d.count} conversation${d.count === 1 ? "" : "s"}`}

@@ -47,7 +47,7 @@ export function Dialog({ open, onClose, title, children, className, size = "md" 
         aria-modal="true"
         tabIndex={-1}
         className={cn(
-          "surface-solid animate-scale-in max-h-[92dvh] w-full overflow-y-auto rounded-t-4xl border border-edge shadow-2xl outline-none sm:rounded-4xl",
+          "surface-solid animate-scale-in max-h-[92dvh] w-full overflow-y-auto rounded-t-4xl border border-edge shadow-xl outline-none sm:rounded-4xl",
           size === "md" && "sm:max-w-lg",
           size === "lg" && "sm:max-w-2xl",
           size === "full" && "sm:max-w-4xl",

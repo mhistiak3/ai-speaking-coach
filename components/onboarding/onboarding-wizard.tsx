@@ -73,7 +73,7 @@ export function OnboardingWizard() {
               <div
                 className={cn(
                   "h-1.5 rounded-full transition-all duration-300",
-                  i <= step ? "btn-gradient" : "bg-edge",
+                  i <= step ? "btn-solid" : "bg-edge",
                 )}
               />
               <span

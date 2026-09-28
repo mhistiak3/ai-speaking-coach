@@ -51,7 +51,7 @@ export function SummaryModal({ session, open, onClose }: SummaryModalProps) {
   return (
     <Dialog open={open} onClose={onClose} title="Session summary" size="lg">
       <div className="flex items-center gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl btn-gradient">
+        <div className="flex size-12 items-center justify-center rounded-2xl btn-solid">
           <Sparkles className="size-6 text-white" />
         </div>
         <div>

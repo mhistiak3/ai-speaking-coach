@@ -42,7 +42,7 @@ export default function HomePage() {
           <h1 className="mt-6 max-w-3xl text-balance text-4xl font-extrabold leading-[1.08] tracking-tight text-ink sm:text-6xl">
             Stop studying.
             <br />
-            Start <span className="text-gradient">speaking</span>.
+            Start <span className="text-brand">speaking</span>.
           </h1>
 
           <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed text-ink-soft sm:text-lg">
@@ -67,8 +67,7 @@ export default function HomePage() {
 
           {/* Orb preview */}
           <div className="relative mt-14 flex h-56 w-full max-w-md items-center justify-center">
-            <div className="absolute size-52 rounded-full bg-brand/10 blur-3xl" />
-            <div className="animate-float relative flex size-36 items-center justify-center rounded-full btn-gradient shadow-2xl shadow-brand/40">
+            <div className="animate-float relative flex size-36 items-center justify-center rounded-full bg-brand">
               <Waves className="size-14 text-white/95" />
               <span className="absolute inset-0 animate-pulse-ring rounded-full border-4 border-brand/40" />
               <span
@@ -160,12 +159,10 @@ export default function HomePage() {
 
         {/* CTA */}
         <section className="my-16 sm:my-20">
-          <div className="glass relative overflow-hidden rounded-4xl px-6 py-12 text-center sm:px-12 sm:py-16">
-            <div className="absolute -left-20 -top-20 size-64 rounded-full bg-brand/20 blur-3xl" />
-            <div className="absolute -bottom-24 -right-16 size-64 rounded-full bg-brand-2/20 blur-3xl" />
+          <div className="glass relative rounded-4xl px-6 py-12 text-center sm:px-12 sm:py-16">
             <h2 className="relative text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
               Your next conversation<br />
-              <span className="text-gradient">starts with one tap.</span>
+              <span className="text-brand">starts with one tap.</span>
             </h2>
             <p className="relative mx-auto mt-4 max-w-md text-sm leading-relaxed text-ink-soft">
               Set your languages, pick a scenario, and speak out loud. Thirty seconds from now
@@ -209,7 +206,7 @@ function HowCard({
   text: string;
 }) {
   return (
-    <div className="glass group relative overflow-hidden rounded-3xl p-6 transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-brand/10">
+    <div className="glass group relative overflow-hidden rounded-3xl p-6 transition-colors hover:border-brand/40">
       <span className="absolute right-4 top-2 text-6xl font-black text-edge group-hover:text-brand/15">
         {step}
       </span>
