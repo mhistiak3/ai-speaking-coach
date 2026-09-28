@@ -1,7 +1,7 @@
+import { Providers } from "@/components/layout/providers";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/layout/providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,6 +21,7 @@ export const metadata: Metadata = {
   description:
     "Practice speaking any language with a natural AI voice partner. Real conversations, pronunciation feedback, and gentle corrections — not quizzes.",
   applicationName: "FluentVoice",
+
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -54,8 +55,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
+        <link rel="shortcut icon" href="favicon.png" type="image/x-icon" />
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="app-bg antialiased">
