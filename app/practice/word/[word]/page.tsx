@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BookOpen,
   Gauge,
+  Loader2,
   Mic,
   Repeat,
   Volume2,
@@ -21,6 +22,7 @@ import type { SpeechError } from "@/lib/speech/types";
 import { useWordPracticeStore } from "@/lib/store/word-practice-store";
 import { useSettingsStore } from "@/lib/store/settings-store";
 import { useWordProfile } from "@/lib/hooks/use-word-profile";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
 import { getLanguage } from "@/lib/languages";
 import { cn, similarity } from "@/lib/utils";
 
@@ -53,6 +55,7 @@ export default function WordPracticePage() {
 
   useEffect(() => () => turnRef.current?.cancel(), []);
 
+  const hydrated = useHydrated();
   const attempts = record?.attempts ?? [];
   const best = attempts.length ? Math.max(...attempts.map((a) => a.accuracy)) : null;
 
@@ -109,6 +112,15 @@ export default function WordPracticePage() {
       },
     );
     turnRef.current.start();
+  }
+
+  // Wait for persisted settings/store (prevents hydration mismatch).
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-brand" />
+      </div>
+    );
   }
 
   return (

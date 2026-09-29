@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/lib/store/settings-store";
 import { useSessionsStore } from "@/lib/store/session-store";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
 import { getLanguage, NATIVE_LANGUAGES, PRACTICE_LANGUAGES } from "@/lib/languages";
 import { SCENARIOS, CUSTOM_SCENARIO_ID } from "@/lib/scenarios";
 import type { ProficiencyLevel } from "@/lib/types";
@@ -22,6 +23,7 @@ const LEVELS: { value: ProficiencyLevel; label: string; hint: string }[] = [
 
 export function OnboardingWizard() {
   const router = useRouter();
+  const hydrated = useHydrated();
   const settings = useSettingsStore();
   const updateSettings = useSettingsStore((s) => s.update);
   const createSession = useSessionsStore((s) => s.createSession);
@@ -58,6 +60,18 @@ export function OnboardingWizard() {
     updateSettings({ level });
     // brief optimistic delay for the button state to land
     setTimeout(() => router.push(`/practice/${session.id}`), 220);
+  }
+
+  // Wait for persisted settings (prevents hydration mismatch).
+  if (!hydrated) {
+    return (
+      <div className="flex h-dvh flex-col">
+        <AppHeader />
+        <main className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-brand" />
+        </main>
+      </div>
+    );
   }
 
   return (

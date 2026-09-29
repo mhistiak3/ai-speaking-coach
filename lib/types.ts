@@ -7,6 +7,15 @@ export type ProficiencyLevel = "beginner" | "intermediate" | "advanced";
 
 export type CorrectionFrequency = "minimal" | "balanced" | "detailed";
 
+/** How long the mic waits in silence before ending the learner's turn. */
+export type PauseTolerance = "short" | "medium" | "long";
+
+export const PAUSE_TOLERANCE_MS: Record<PauseTolerance, number> = {
+  short: 1600,
+  medium: 2800,
+  long: 4200,
+};
+
 /** A language that can be spoken, recognized, or synthesized. */
 export interface LanguageDef {
   /** Stable short code used in storage (e.g. "en", "bn"). */
@@ -192,6 +201,7 @@ export interface UserSettings {
   /** Open the mic automatically when the AI finishes speaking. */
   handsFree: boolean;
   correctionFrequency: CorrectionFrequency;
+  pauseTolerance: PauseTolerance;
   pronunciationFeedback: boolean;
   theme: "dark" | "light";
 }
@@ -207,6 +217,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   voiceGender: "male",
   handsFree: true,
   correctionFrequency: "balanced",
+  pauseTolerance: "medium",
   pronunciationFeedback: true,
   theme: "dark",
 };

@@ -35,6 +35,8 @@ class WebSpeechTurn implements SpeechTurn {
   private utteranceConfidence: number | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private noSpeechTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnCeilingTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopFallback: ReturnType<typeof setTimeout> | null = null;
   private lastHeardAt = 0;
   private finished = false;
   active = false;
@@ -54,6 +56,15 @@ class WebSpeechTurn implements SpeechTurn {
     this.startedAt = Date.now();
     this.lastHeardAt = this.startedAt;
     this.active = true;
+
+    // Hard ceiling: if the engine stops emitting events AND onend (known
+    // mobile Chrome failure mode), force-deliver what we have instead of
+    // hanging the turn forever.
+    this.turnCeilingTimer = setTimeout(() => {
+      if (this.finished) return;
+      if (this.finalWords.length > 0) this.finish(this.buildResult());
+      else this.fail(speechError("empty-speech", "Recording ran too long. Try again.", true));
+    }, this.options.maxTurnMs ?? 75_000);
 
     const rec = new Ctor();
     this.recognition = rec;
@@ -191,6 +202,14 @@ class WebSpeechTurn implements SpeechTurn {
     } catch {
       /* already stopped */
     }
+    // Android Chrome failure mode: onend may never arrive after stop().
+    // Force-deliver what we have so the conversation can never deadlock.
+    this.stopFallback = setTimeout(() => {
+      this.stopFallback = null;
+      if (this.finished) return;
+      if (this.finalWords.length > 0) this.finish(this.buildResult());
+      else this.fail(speechError("empty-speech", "Recording stopped. Tap the mic to try again.", true));
+    }, 2500);
   }
 
   cancel(): void {
@@ -260,8 +279,12 @@ class WebSpeechTurn implements SpeechTurn {
   private clearTimers(): void {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.noSpeechTimer) clearTimeout(this.noSpeechTimer);
+    if (this.turnCeilingTimer) clearTimeout(this.turnCeilingTimer);
+    if (this.stopFallback) clearTimeout(this.stopFallback);
     this.silenceTimer = null;
     this.noSpeechTimer = null;
+    this.turnCeilingTimer = null;
+    this.stopFallback = null;
   }
 }
 

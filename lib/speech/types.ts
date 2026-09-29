@@ -65,6 +65,9 @@ export interface StartOptions {
   silenceStopMs?: number;
   /** Abort with "empty-speech" if nothing heard this long after start (ms). */
   noSpeechTimeoutMs?: number;
+  /** Hard ceiling for one turn — protects against engines that stop
+   *  emitting events without ever ending (mobile Chrome bug). */
+  maxTurnMs?: number;
 }
 
 export interface SpeechTurn {

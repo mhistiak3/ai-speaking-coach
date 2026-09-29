@@ -119,16 +119,39 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
 }
 
 /**
- * Chrome pauses long speechSynthesis utterances (~15s) unless nudged.
- * Keep-alive ticks pause/resume while speaking.
+ * Chrome kills utterances silent >15s — the classic fix is a pause()/resume()
+ * nudge. BUT that hack can permanently WEDGE the engine when the tab is
+ * backgrounded while paused (resume() is ignored on mobile, onend never
+ * fires, and the session deadlocks in "speaking" — the 4-minute freeze bug).
+ *
+ * Safer approach: keep a deadline estimate of playback; if the engine is
+ * still "speaking"/paused past it, force resume() then cancel() so onend/
+ * onerror fire and the UI recovers instead of hanging forever.
  */
-function startKeepAlive(synth: SpeechSynthesis): () => void {
+function startKeepAlive(synth: SpeechSynthesis, text: string, rate: number): () => void {
+  const estimatedMs = (text.length / 13) * 1000 * (1 / (rate || 1));
+  const deadline = Date.now() + estimatedMs + 20_000; // generous headroom
   const tick = setInterval(() => {
-    if (synth.speaking && !synth.paused) {
-      synth.pause();
-      synth.resume();
+    if (!synth.speaking) {
+      clearInterval(tick);
+      return;
     }
-  }, 9000);
+    if (Date.now() > deadline) {
+      clearInterval(tick);
+      try {
+        synth.resume(); // un-wedge a backgrounded pause first
+      } catch {
+        /* noop */
+      }
+      if (synth.paused || synth.speaking) {
+        try {
+          synth.cancel(); // fire onerror/onend so the session recovers
+        } catch {
+          /* noop */
+        }
+      }
+    }
+  }, 4000);
   return () => clearInterval(tick);
 }
 
@@ -173,7 +196,7 @@ export const browserTts: TextToSpeechProvider = {
       if (voice) utterance.voice = voice;
 
       utterance.onstart = () => {
-        stopKeepAlive = startKeepAlive(synth);
+        stopKeepAlive = startKeepAlive(synth, text, options.rate ?? 1);
         callbacks.onStart?.();
       };
       utterance.onboundary = (event) => callbacks.onBoundary?.(event.charIndex);

@@ -25,7 +25,8 @@ import { useSessionsStore } from "@/lib/store/session-store";
 import { useSettingsStore } from "@/lib/store/settings-store";
 import { useWordPracticeStore } from "@/lib/store/word-practice-store";
 import { getLanguage, NATIVE_LANGUAGES, PRACTICE_LANGUAGES } from "@/lib/languages";
-import type { CorrectionFrequency, ProficiencyLevel } from "@/lib/types";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
+import type { CorrectionFrequency, PauseTolerance, ProficiencyLevel } from "@/lib/types";
 
 interface Health {
   ai: { configured: boolean; provider: string; model: string };
@@ -33,6 +34,7 @@ interface Health {
 
 export function SettingsForm() {
   const router = useRouter();
+  const hydrated = useHydrated();
   const settings = useSettingsStore();
   const update = useSettingsStore((s) => s.update);
   const resetSettings = useSettingsStore((s) => s.reset);
@@ -90,6 +92,16 @@ export function SettingsForm() {
         gender: settings.voiceGender,
       },
       { onError: () => setHealth((h) => h) },
+    );
+  }
+
+  // Wait for persisted settings before rendering — prevents hydration
+  // mismatches (server renders defaults, browser has saved values).
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-brand" />
+      </div>
     );
   }
 
@@ -278,6 +290,25 @@ export function SettingsForm() {
                 { value: "detailed", label: "Detailed" },
               ]}
             />
+          </div>
+          <div className="mt-4">
+            <span className="mb-1.5 block text-xs font-semibold text-ink-soft">
+              When the AI answers — after my pause
+            </span>
+            <Segmented<PauseTolerance>
+              ariaLabel="Pause tolerance"
+              value={settings.pauseTolerance}
+              onChange={(pauseTolerance) => update({ pauseTolerance })}
+              options={[
+                { value: "short", label: "1.6s" },
+                { value: "medium", label: "2.8s" },
+                { value: "long", label: "4.2s" },
+              ]}
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+              How long the mic waits after you stop talking before sending your turn. If the AI
+              interrupts you mid-thought, choose a longer pause.
+            </p>
           </div>
           <Switch
             checked={settings.pronunciationFeedback}

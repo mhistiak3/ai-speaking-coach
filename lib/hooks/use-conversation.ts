@@ -10,6 +10,14 @@ import { browserTts } from "@/lib/speech/tts-browser";
 import type { FinalTranscript, SpeechError, SpeechTurn } from "@/lib/speech/types";
 import { getLanguage } from "@/lib/languages";
 import type { ConversationSession, ChatMessage, TurnAnalysis } from "@/lib/types";
+import { PAUSE_TOLERANCE_MS } from "@/lib/types";
+
+/** Client-side ceiling so a dropped mobile network can never hang a turn. */
+function fetchSignal(ms: number): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
 import type { AnalysisOutput } from "@/lib/validation/schemas";
 import { countFillers, countRepeats, uid, wordCount } from "@/lib/utils";
 
@@ -93,6 +101,26 @@ export function useConversation(sessionId: string) {
     phaseRef.current = phase;
   }, [phase]);
 
+  // ── Hard safety net ───────────────────────────────────────────────────
+  // No phase may stay "active" beyond this: if the mic engine, TTS engine,
+  // or network wedges (mobile Chrome failure modes), force-reset so the
+  // conversation can never deadlock.
+  useEffect(() => {
+    if (phase !== "listening" && phase !== "processing" && phase !== "thinking" && phase !== "speaking") {
+      return;
+    }
+    const hardCeiling = setTimeout(() => {
+      turnRef.current?.cancel();
+      speakHandleRef.current?.cancel();
+      setError({
+        message: "That turn got stuck, so it was reset. Tap the mic to continue.",
+        retryable: true,
+      });
+      setPhase("error");
+    }, 180_000);
+    return () => clearTimeout(hardCeiling);
+  }, [phase]);
+
   const target = getLanguage(session?.targetLanguage ?? "en");
 
   // ── Analysis merge ────────────────────────────────────────────────────
@@ -155,6 +183,18 @@ export function useConversation(sessionId: string) {
     (text: string) =>
       new Promise<void>((resolve) => {
         const handsFreeSignal = () => setAutoListenTick((t) => t + 1);
+        let settled = false;
+        let watchdog: ReturnType<typeof setTimeout> | null = null;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          if (watchdog) clearTimeout(watchdog);
+          speakHandleRef.current = null;
+          setPhase("idle");
+          handsFreeSignal();
+          resolve();
+        };
+
         if (settings.muted || !settings.autoPlayVoice || !browserTts.isAvailable()) {
           setPhase("idle");
           handsFreeSignal();
@@ -163,27 +203,29 @@ export function useConversation(sessionId: string) {
         }
         setPhase("speaking");
         speakHandleRef.current?.cancel();
+
+        // Safety net: mobile speech engines sometimes die silently (no end,
+        // no error) after the screen locks or minutes into a session.
+        // Estimate the playback duration and force-recover well past it —
+        // otherwise the session deadlocks in "speaking" forever.
+        const rate = settings.playbackRate || 1;
+        const estimatedMs = (text.length / 13) * 1000 * (1 / rate);
+        watchdog = setTimeout(() => {
+          speakHandleRef.current?.cancel();
+          settle();
+        }, Math.min(Math.max(estimatedMs + 7000, 12000), 70000));
+
         speakHandleRef.current = browserTts.speak(
           text,
           {
             lang: target.speechTag,
             voiceId: settings.voiceId,
-            rate: settings.playbackRate,
+            rate,
             gender: settings.voiceGender,
           },
           {
-            onEnd: () => {
-              speakHandleRef.current = null;
-              setPhase("idle");
-              handsFreeSignal();
-              resolve();
-            },
-            onError: () => {
-              speakHandleRef.current = null;
-              setPhase("idle");
-              handsFreeSignal();
-              resolve();
-            },
+            onEnd: settle,
+            onError: settle,
           },
         );
       }),
@@ -198,6 +240,7 @@ export function useConversation(sessionId: string) {
         const res = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: fetchSignal(60000),
           body: JSON.stringify({
             userText: userMessage.text,
             assistantText,
@@ -244,6 +287,8 @@ export function useConversation(sessionId: string) {
         const res = await fetch("/api/conversation", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // AI replies can be slow; 45s ceiling prevents a hung turn.
+          signal: fetchSignal(45000),
           body: JSON.stringify({
             sessionId,
             nativeLanguage: session?.nativeLanguage ?? "bn",
@@ -277,7 +322,13 @@ export function useConversation(sessionId: string) {
 
         await speakReply(data.reply);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Could not reach the AI.";
+        const name = (err as { name?: string })?.name;
+        const message =
+          name === "TimeoutError"
+            ? "The AI took too long to answer. Tap retry."
+            : err instanceof Error && err.message && !/signal/i.test(err.message)
+              ? err.message
+              : "Could not reach the AI.";
         const retryable = (err as { retryable?: boolean }).retryable ?? true;
         setError({ message, retryable, failedUserText: userMessage.text });
         setPhase("error");
@@ -344,6 +395,13 @@ export function useConversation(sessionId: string) {
     turnRef.current = webSpeechStt.createTurn(
       {
         lang: target.speechTag,
+        // Silence grace before ending the turn — Settings → Coaching.
+        // Fallback guards against stale persisted-settings / old chunks
+        // where the key may be missing.
+        silenceStopMs:
+          PAUSE_TOLERANCE_MS?.[settings.pauseTolerance ?? "long"] ??
+          PAUSE_TOLERANCE_MS?.long ??
+          2800,
         // Hands-free auto-opened mic: if nothing is said for 5s, close it.
         noSpeechTimeoutMs: opts?.auto ? 5000 : 8000,
       },
@@ -379,7 +437,7 @@ export function useConversation(sessionId: string) {
       },
     );
     turnRef.current.start();
-  }, [handleFinalTranscript, stopSpeaking, target.speechTag]);
+  }, [handleFinalTranscript, settings.pauseTolerance, stopSpeaking, target.speechTag]);
 
   const cancelListening = useCallback(() => {
     turnRef.current?.cancel();
@@ -451,6 +509,7 @@ export function useConversation(sessionId: string) {
       const res = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: fetchSignal(45000),
         body: JSON.stringify({
           sessionId,
           nativeLanguage: session.nativeLanguage,

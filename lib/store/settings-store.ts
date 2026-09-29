@@ -23,6 +23,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "asc.settings.v1",
+      version: 2,
+      // v2: pauseTolerance default became "medium" (2.8s). One-time
+      // migration so already-saved settings pick up the new default.
+      migrate: (persisted, from) => {
+        const s = (persisted ?? {}) as Record<string, unknown>;
+        if (from < 2) s.pauseTolerance = "medium";
+        return s;
+      },
       partialize: (state) => ({
         nativeLanguage: state.nativeLanguage,
         targetLanguage: state.targetLanguage,
@@ -34,6 +42,7 @@ export const useSettingsStore = create<SettingsState>()(
         voiceGender: state.voiceGender,
         handsFree: state.handsFree,
         correctionFrequency: state.correctionFrequency,
+        pauseTolerance: state.pauseTolerance,
         pronunciationFeedback: state.pronunciationFeedback,
         theme: state.theme,
       }),
@@ -54,6 +63,7 @@ export function getSettingsSnapshot(): UserSettings {
     voiceGender: s.voiceGender,
     handsFree: s.handsFree,
     correctionFrequency: s.correctionFrequency,
+    pauseTolerance: s.pauseTolerance,
     pronunciationFeedback: s.pronunciationFeedback,
     theme: s.theme,
   };

@@ -60,6 +60,7 @@ export function ProgressDashboard() {
 
   // current streak (consecutive days with at least one session, ending today/yesterday)
   const streak = useMemo(() => {
+    if (!hydrated) return 0;
     const days = new Set(sessions.map((s) => dayKey(s.createdAt)));
     let count = 0;
     const cursor = new Date();
@@ -72,7 +73,7 @@ export function ProgressDashboard() {
       } else break;
     }
     return count;
-  }, [sessions]);
+  }, [hydrated, sessions]);
 
   // last 14 days activity bars
   const activity = useMemo(() => {
@@ -84,19 +85,21 @@ export function ProgressDashboard() {
       days.push({
         key,
         label: d.toLocaleDateString(undefined, { weekday: "narrow" }),
-        count: sessions.filter((s) => dayKey(s.createdAt) === key).length,
+        count: hydrated ? sessions.filter((s) => dayKey(s.createdAt) === key).length : 0,
       });
     }
     return days;
-  }, [sessions]);
+  }, [hydrated, sessions]);
   const maxCount = Math.max(1, ...activity.map((d) => d.count));
 
   const difficultWords = useMemo(
     () =>
-      Object.values(words)
-        .sort((a, b) => b.seenInSessions - a.seenInSessions)
-        .slice(0, 14),
-    [words],
+      hydrated
+        ? Object.values(words)
+            .sort((a, b) => b.seenInSessions - a.seenInSessions)
+            .slice(0, 14)
+        : [],
+    [hydrated, words],
   );
 
   return (
