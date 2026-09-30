@@ -39,6 +39,14 @@ function getRecognitionCtor(): (new () => SpeechRecognition) | null {
 const MAX_STITCHES = 15;
 const STITCH_DELAY_MS = 150;
 
+/** Common words can legitimately arrive as a one-word final — never noise. */
+const COMMON_WORDS = new Set([
+  "a", "i", "an", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is",
+  "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we",
+  "am", "the", "and", "not", "but", "for", "yes", "you", "that", "this",
+  "are", "was", "were", "has", "had", "her", "him", "his", "our", "out",
+]);
+
 class WebSpeechTurn implements SpeechTurn {
   private recognition: SpeechRecognition | null = null;
   private startedAt = 0;
@@ -53,6 +61,9 @@ class WebSpeechTurn implements SpeechTurn {
   private stitchTimer: ReturnType<typeof setTimeout> | null = null;
   private stitches = 0;
   private intentionalStop = false;
+  /** Single-word finals that repeat across sessions are engine noise. */
+  private singletonFinalCount = new Map<string, number>();
+  private noiseTokens = new Set<string>();
   private lastHeardAt = 0;
   private finished = false;
   active = false;
@@ -118,11 +129,15 @@ class WebSpeechTurn implements SpeechTurn {
         const result = event.results[i];
         const alt = result?.[0];
         if (!alt) continue;
-        const chunk = alt.transcript.trim();
+        const raw = alt.transcript.trim();
         if (result.isFinal) {
-          if (chunk) finals += (finals ? " " : "") + chunk;
+          const chunk = this.sanitizeFinal(raw);
+          // Android re-delivers CUMULATIVE final segments ("han" → "han I"
+          // → "han I like"). Blind concatenation would produce
+          // "han han I han I like …" — merge each segment idempotently.
+          if (chunk) finals = this.mergeFinalChunk(finals, chunk);
         } else {
-          interim += alt.transcript;
+          interim += raw;
         }
         if (alt.confidence > 0 && alt.confidence < 1) {
           confidence = Math.max(confidence ?? 0, alt.confidence);
@@ -214,6 +229,59 @@ class WebSpeechTurn implements SpeechTurn {
     } catch {
       this.fail(speechError("transcription-failed", "Could not start recording.", true));
     }
+  }
+
+  /**
+   * Single-word final segments are engine noise when they REPEAT across the
+   * turn ("han", "the", random blips from restart pops). Multi-word finals
+   * get their noise tokens stripped. A token is blacklisted after it is seen
+   * twice as a lone segment, and every occurrence is purged from the frozen
+   * history so the transcript stays clean.
+   */
+  private sanitizeFinal(raw: string): string {
+    if (!raw) return "";
+    const words = raw.split(/\s+/);
+
+    // Strip already-known noise tokens from any segment.
+    if (this.noiseTokens.size > 0) {
+      const kept = words.filter((w) => !this.noiseTokens.has(w.toLowerCase()));
+      if (kept.length !== words.length) {
+        raw = kept.join(" ");
+        if (!raw) return "";
+      }
+    }
+
+    // Track lone-segment tokens for noise detection.
+    const lone = raw.split(/\s+/);
+    if (lone.length === 1) {
+      const key = lone[0]!.toLowerCase();
+      // Never blacklist short/common words — "the", "I" etc. can legitimately
+      // arrive as their own final segment.
+      if (key.length >= 2 && !COMMON_WORDS.has(key)) {
+        const seen = (this.singletonFinalCount.get(key) ?? 0) + 1;
+        this.singletonFinalCount.set(key, seen);
+        if (seen >= 2) {
+          this.noiseTokens.add(key);
+          this.purgeNoiseToken(key);
+          return "";
+        }
+      }
+    }
+    return raw;
+  }
+
+  private purgeNoiseToken(token: string): void {
+    const strip = (s: string) =>
+      s
+        .split(/\s+/)
+        .filter((w) => w && w.toLowerCase() !== token)
+        .join(" ");
+    this.committed = strip(this.committed);
+    this.finalText = strip(this.finalText);
+    this.finalWords = this.finalText
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => ({ word, confidence: null }));
   }
 
   /**
