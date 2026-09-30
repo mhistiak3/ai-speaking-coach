@@ -11,6 +11,14 @@ import {
 /**
  * Free in-browser speech-to-text via the Web Speech API (Chrome/Edge/Safari).
  *
+ * Android Chrome quirk this implementation works around: the engine ENDS the
+ * recognition session (fires onend) after only ~1–3s of silence — long
+ * before our configured `silenceStopMs` elapses. Naively delivering on that
+ * event makes the pause-tolerance setting feel identical at every value.
+ * Solution: SESSION STITCHING — on a natural end we transparently restart
+ * recognition and keep accumulating, so only OUR silence watchdog (or the
+ * user's tap) ends the turn.
+ *
  * Honesty notes baked into the app:
  *  - The browser transcribes speech but only exposes an *utterance-level*
  *    confidence in some engines; per-word confidence is usually 0. We mark
@@ -27,16 +35,24 @@ function getRecognitionCtor(): (new () => SpeechRecognition) | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
+/** Safety valve: ~15 stitched sessions ≈ up to a minute of extra pauses. */
+const MAX_STITCHES = 15;
+const STITCH_DELAY_MS = 150;
+
 class WebSpeechTurn implements SpeechTurn {
   private recognition: SpeechRecognition | null = null;
   private startedAt = 0;
   private finalWords: TranscriptWord[] = [];
   private finalText = "";
+  private committed = "";
   private utteranceConfidence: number | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private noSpeechTimer: ReturnType<typeof setTimeout> | null = null;
   private turnCeilingTimer: ReturnType<typeof setTimeout> | null = null;
   private stopFallback: ReturnType<typeof setTimeout> | null = null;
+  private stitchTimer: ReturnType<typeof setTimeout> | null = null;
+  private stitches = 0;
+  private intentionalStop = false;
   private lastHeardAt = 0;
   private finished = false;
   active = false;
@@ -57,14 +73,23 @@ class WebSpeechTurn implements SpeechTurn {
     this.lastHeardAt = this.startedAt;
     this.active = true;
 
-    // Hard ceiling: if the engine stops emitting events AND onend (known
-    // mobile Chrome failure mode), force-deliver what we have instead of
-    // hanging the turn forever.
+    // Hard ceiling: total turn lifetime even with stitching.
     this.turnCeilingTimer = setTimeout(() => {
       if (this.finished) return;
       if (this.finalWords.length > 0) this.finish(this.buildResult());
       else this.fail(speechError("empty-speech", "Recording ran too long. Try again.", true));
     }, this.options.maxTurnMs ?? 75_000);
+
+    this.beginSession();
+  }
+
+  /** Create + start one recognition session (reused for every stitch). */
+  private beginSession(): void {
+    const Ctor = getRecognitionCtor();
+    if (!Ctor) {
+      this.fail(speechError("unsupported-browser", "This browser can't do speech recognition."));
+      return;
+    }
 
     const rec = new Ctor();
     this.recognition = rec;
@@ -78,42 +103,41 @@ class WebSpeechTurn implements SpeechTurn {
     };
 
     /**
-     * Android Chrome delivers results in two broken styles:
-     *  1. re-delivering the SAME segment in later events, and
-     *  2. each new final chunk RESTATING the entire sentence so far
-     *     ("no" → "no the" → "no the cup" → … — cumulative restatements).
-     * Naively joining produces duplicated cascades ("5 words → 100 words").
-     *
-     * Fix: a STATEFUL IDEMPOTENT MERGE. Every event re-merges the entire
-     * results list into `finalText` through `mergeFinalChunk`, which skips
-     * contained chunks, replaces on restatements, and stitches word
-     * overlaps. Re-delivery is therefore a no-op, restatements grow the
-     * text correctly, and engine resets need no special handling.
+     * ANDROID CHROME: final results are cumulative and repeat — the same
+     * utterance can be re-delivered verbatim ("the cup of coffee" x5) or
+     * extended ("the cup" → "the cup of tea"). We therefore rebuild the
+     * transcript from the full results list every event and merge word-level
+     * idempotently (mergeFinalChunk) — blind appending duplicates text.
      */
     rec.onresult = (event) => {
+      let finals = "";
       let interim = "";
       let confidence: number | null = null;
-      let acc = this.finalText;
 
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const alt = result?.[0];
         if (!alt) continue;
+        const chunk = alt.transcript.trim();
         if (result.isFinal) {
-          acc = this.mergeFinalChunk(acc, alt.transcript);
-          if (alt.confidence > 0 && alt.confidence < 1) {
-            confidence = Math.max(confidence ?? 0, alt.confidence);
-          }
+          if (chunk) finals += (finals ? " " : "") + chunk;
         } else {
           interim += alt.transcript;
+        }
+        if (alt.confidence > 0 && alt.confidence < 1) {
+          confidence = Math.max(confidence ?? 0, alt.confidence);
         }
       }
 
       if (confidence != null) {
         this.utteranceConfidence = Math.max(this.utteranceConfidence ?? 0, confidence);
       }
-      this.finalText = acc;
-      this.finalWords = acc
+
+      // committed = transcript frozen before the current engine session;
+      // finals = everything the current session has confirmed so far.
+      const rebuilt = this.mergeFinalChunk(this.committed, finals);
+      this.finalText = this.mergeFinalChunk(this.finalText, rebuilt);
+      this.finalWords = this.finalText
         .split(/\s+/)
         .filter(Boolean)
         .map((word) => ({ word, confidence: null }));
@@ -122,9 +146,8 @@ class WebSpeechTurn implements SpeechTurn {
       this.armSilenceTimer();
       this.armNoSpeechTimer();
 
-      // Show confirmed + in-flight speech together (also deduped — Android
-      // interims restate the sentence too).
-      const display = this.mergeFinalChunk(acc, interim.trim());
+      // Show confirmed + in-flight speech, deduped against the same merge.
+      const display = this.mergeFinalChunk(this.finalText, interim.trim());
       if (display) this.callbacks.onInterim?.(display);
     };
 
@@ -134,7 +157,12 @@ class WebSpeechTurn implements SpeechTurn {
       } else if (event.error === "audio-capture") {
         this.fail(speechError("no-microphone", "No microphone was found."));
       } else if (event.error === "no-speech") {
-        this.fail(speechError("empty-speech", "Didn't catch any speech.", true));
+        if (this.finalWords.length === 0) {
+          this.fail(speechError("empty-speech", "Didn't catch any speech.", true));
+        }
+        // else: silence mid-turn — onend will stitch or deliver.
+      } else if (event.error === "aborted") {
+        // Engine tore the session down mid-turn; onend decides.
       } else if (event.error === "language-not-supported") {
         this.fail(
           speechError(
@@ -145,19 +173,40 @@ class WebSpeechTurn implements SpeechTurn {
         );
       } else if (event.error === "network") {
         this.fail(speechError("network", "Speech service network error.", true));
-      } else {
+      } else if (!this.finalWords.length) {
         this.fail(speechError("transcription-failed", `Speech recognition failed (${event.error}).`, true));
       }
     };
 
     rec.onend = () => {
       if (this.finished) return;
-      // Natural or requested end of utterance — deliver the turn once.
-      if (this.finalWords.length > 0) {
-        this.finish(this.buildResult());
-      } else {
-        this.fail(speechError("empty-speech", "No speech detected. Try again.", true));
+      if (this.intentionalStop) {
+        // User tap or silence watchdog asked to end: deliver the turn.
+        if (this.finalWords.length > 0) this.finish(this.buildResult());
+        else this.fail(speechError("empty-speech", "No speech detected. Try again.", true));
+        return;
       }
+      // Natural end (engine cut the session). Honor the configured pause
+      // window by stitching a fresh session — unless it already elapsed.
+      const budget = this.options.silenceStopMs ?? 2800;
+      const silenceElapsed = Date.now() - this.lastHeardAt;
+      if (this.finalWords.length > 0 && silenceElapsed >= budget) {
+        this.finish(this.buildResult());
+        return;
+      }
+      if (this.stitches >= MAX_STITCHES) {
+        if (this.finalWords.length > 0) this.finish(this.buildResult());
+        else this.fail(speechError("empty-speech", "No speech detected. Try again.", true));
+        return;
+      }
+      this.stitches++;
+      // Freeze what we have; the new session's finals will merge against it.
+      this.committed = this.finalText;
+      this.stitchTimer = setTimeout(() => {
+        this.stitchTimer = null;
+        if (this.finished || !this.active) return;
+        this.beginSession();
+      }, STITCH_DELAY_MS);
     };
 
     try {
@@ -168,22 +217,37 @@ class WebSpeechTurn implements SpeechTurn {
   }
 
   /**
-   * Idempotently merge one final chunk into accumulated text.
-   *  - chunk already contained in acc            → keep acc (re-delivery)
-   *  - chunk restates acc (+ maybe adds words)   → chunk wins  (restatement)
-   *  - word-level suffix/prefix overlap          → stitch once
-   *  - otherwise                                 → append
+   * Idempotently merge a (possibly repeated/extended) transcript into the
+   * accumulated text. See notes above — Android re-delivers whole prefixes,
+   * so blind appending would duplicate ("coffee coffee coffee...").
    */
   private mergeFinalChunk(acc: string, incoming: string): string {
     const a = acc.trim();
     const c = incoming.trim();
     if (!c) return a;
     if (!a) return c;
-    if (c === a || a.includes(c)) return a;
-    if (c.startsWith(a)) return c;
+    if (c === a) return a;
 
     const aw = a.split(/\s+/);
     const cw = c.split(/\s+/);
+
+    // cw already exists verbatim as a word run inside acc → skip.
+    if (cw.length <= aw.length) {
+      for (let i = 0; i + cw.length <= aw.length; i++) {
+        let hit = true;
+        for (let j = 0; j < cw.length; j++) {
+          if (aw[i + j] !== cw[j]) {
+            hit = false;
+            break;
+          }
+        }
+        if (hit) return a;
+      }
+    }
+    // Restatement: starts with everything already known → replace (grows).
+    if (cw.length >= aw.length && cw.slice(0, aw.length).join(" ") === a) return c;
+
+    // Word-overlap stitching.
     for (let k = Math.min(aw.length, cw.length); k > 0; k--) {
       const suffix = aw.slice(aw.length - k).join(" ");
       const prefix = cw.slice(0, k).join(" ");
@@ -196,20 +260,21 @@ class WebSpeechTurn implements SpeechTurn {
 
   stop(): void {
     if (!this.active) return;
+    this.intentionalStop = true;
     this.clearTimers();
     try {
       this.recognition?.stop();
     } catch {
-      /* already stopped */
+      /* noop */
     }
-    // Android Chrome failure mode: onend may never arrive after stop().
-    // Force-deliver what we have so the conversation can never deadlock.
+    // If the wedged engine never fires onend after a graceful stop,
+    // force-deliver very shortly instead of hanging the turn.
     this.stopFallback = setTimeout(() => {
       this.stopFallback = null;
       if (this.finished) return;
       if (this.finalWords.length > 0) this.finish(this.buildResult());
       else this.fail(speechError("empty-speech", "Recording stopped. Tap the mic to try again.", true));
-    }, 2500);
+    }, 1200);
   }
 
   cancel(): void {
@@ -226,7 +291,7 @@ class WebSpeechTurn implements SpeechTurn {
 
   private armSilenceTimer(): void {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    const ms = this.options.silenceStopMs ?? 2200;
+    const ms = this.options.silenceStopMs ?? 2800;
     this.silenceTimer = setTimeout(() => {
       if (Date.now() - this.lastHeardAt >= ms * 0.9) this.stop();
     }, ms);
@@ -281,10 +346,12 @@ class WebSpeechTurn implements SpeechTurn {
     if (this.noSpeechTimer) clearTimeout(this.noSpeechTimer);
     if (this.turnCeilingTimer) clearTimeout(this.turnCeilingTimer);
     if (this.stopFallback) clearTimeout(this.stopFallback);
+    if (this.stitchTimer) clearTimeout(this.stitchTimer);
     this.silenceTimer = null;
     this.noSpeechTimer = null;
     this.turnCeilingTimer = null;
     this.stopFallback = null;
+    this.stitchTimer = null;
   }
 }
 

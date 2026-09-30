@@ -399,8 +399,8 @@ export function useConversation(sessionId: string) {
         // Fallback guards against stale persisted-settings / old chunks
         // where the key may be missing.
         silenceStopMs:
-          PAUSE_TOLERANCE_MS?.[settings.pauseTolerance ?? "long"] ??
-          PAUSE_TOLERANCE_MS?.long ??
+          PAUSE_TOLERANCE_MS?.[settings.pauseTolerance ?? "medium"] ??
+          PAUSE_TOLERANCE_MS?.medium ??
           2800,
         // Hands-free auto-opened mic: if nothing is said for 5s, close it.
         noSpeechTimeoutMs: opts?.auto ? 5000 : 8000,
